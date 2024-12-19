@@ -57,9 +57,7 @@ const initialValue: TraceReducer = {
 		payload: { items: {} },
 	},
 	filterDisplayValue: new Map<TraceFilterEnum, number>([
-		['component', INITIAL_FILTER_VALUE],
 		['duration', INITIAL_FILTER_VALUE],
-		['httpCode', INITIAL_FILTER_VALUE],
 		['httpHost', INITIAL_FILTER_VALUE],
 		['httpMethod', INITIAL_FILTER_VALUE],
 		['httpUrl', INITIAL_FILTER_VALUE],
@@ -70,6 +68,7 @@ const initialValue: TraceReducer = {
 		['status', INITIAL_FILTER_VALUE],
 		['traceID', INITIAL_FILTER_VALUE],
 	]),
+	spanKind: undefined,
 };
 
 const traceReducer = (
@@ -97,6 +96,7 @@ const traceReducer = (
 				order,
 				pageSize,
 				orderParam,
+				spanKind,
 			} = payload;
 
 			return {
@@ -114,6 +114,7 @@ const traceReducer = (
 					order,
 					orderParam,
 				},
+				spanKind,
 			};
 		}
 

@@ -1,24 +1,25 @@
 import axios from 'api';
-import { ErrorResponseHandler } from 'api/ErrorResponseHandler';
-import { AxiosError } from 'axios';
-import { ErrorResponse, SuccessResponse } from 'types/api';
-import { PayloadProps, Props } from 'types/api/metrics/getTopLevelOperations';
+import { isNil } from 'lodash-es';
+
+interface GetTopLevelOperationsProps {
+	service?: string;
+	start?: number;
+	end?: number;
+}
 
 const getTopLevelOperations = async (
-	props: Props,
-): Promise<SuccessResponse<PayloadProps> | ErrorResponse> => {
-	try {
-		const response = await axios.post(`/service/top_level_operations`);
+	props: GetTopLevelOperationsProps,
+): Promise<ServiceDataProps> => {
+	const response = await axios.post(`/service/top_level_operations`, {
+		start: !isNil(props.start) ? `${props.start}` : undefined,
+		end: !isNil(props.end) ? `${props.end}` : undefined,
+		service: props.service,
+	});
+	return response.data;
+};
 
-		return {
-			statusCode: 200,
-			error: null,
-			message: response.data.status,
-			payload: response.data[props.service],
-		};
-	} catch (error) {
-		return ErrorResponseHandler(error as AxiosError);
-	}
+export type ServiceDataProps = {
+	[serviceName: string]: string[];
 };
 
 export default getTopLevelOperations;

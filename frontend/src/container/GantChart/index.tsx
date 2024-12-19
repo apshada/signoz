@@ -1,6 +1,6 @@
 import { MinusSquareOutlined, PlusSquareOutlined } from '@ant-design/icons';
 import { IIntervalUnit } from 'container/TraceDetail/utils';
-import React, { useEffect, useState } from 'react';
+import { Dispatch, SetStateAction, useEffect, useState } from 'react';
 import { ITraceTree } from 'types/api/trace/getTraceItem';
 
 import { CardContainer, CardWrapper, CollapseButton } from './styles';
@@ -41,7 +41,11 @@ function GanttChart(props: GanttChartProps): JSX.Element {
 				onClick={handleCollapse}
 				title={isExpandAll ? 'Collapse All' : 'Expand All'}
 			>
-				{isExpandAll ? <MinusSquareOutlined /> : <PlusSquareOutlined />}
+				{isExpandAll ? (
+					<MinusSquareOutlined style={{ fontSize: '16px', color: '#08c' }} />
+				) : (
+					<PlusSquareOutlined style={{ fontSize: '16px', color: '#08c' }} />
+				)}
 			</CollapseButton>
 			<CardWrapper>
 				<Trace
@@ -79,8 +83,8 @@ export interface GanttChartProps {
 	traceMetaData: ITraceMetaData;
 	activeSelectedId: string;
 	activeHoverId: string;
-	setActiveHoverId: React.Dispatch<React.SetStateAction<string>>;
-	setActiveSelectedId: React.Dispatch<React.SetStateAction<string>>;
+	setActiveHoverId: Dispatch<SetStateAction<string>>;
+	setActiveSelectedId: Dispatch<SetStateAction<string>>;
 	spanId: string;
 	intervalUnit: IIntervalUnit;
 }

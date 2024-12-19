@@ -1,11 +1,15 @@
-import { Button, Dropdown, Menu, Typography } from 'antd';
+import './TimePreference.styles.scss';
+
+import { DownOutlined } from '@ant-design/icons';
+import { Button, Dropdown, Typography } from 'antd';
 import TimeItems, {
 	timePreferance,
 	timePreferenceType,
 } from 'container/NewWidget/RightContainer/timeItems';
-import React, { useCallback } from 'react';
+import { Globe } from 'lucide-react';
+import { Dispatch, SetStateAction, useCallback, useMemo } from 'react';
 
-import { TextContainer } from './styles';
+import { menuItems } from './config';
 
 function TimePreference({
 	setSelectedTime,
@@ -21,22 +25,31 @@ function TimePreference({
 		[setSelectedTime],
 	);
 
+	const menu = useMemo(
+		() => ({
+			items: menuItems,
+			onClick: timeMenuItemOnChangeHandler,
+		}),
+		[timeMenuItemOnChangeHandler],
+	);
+
 	return (
-		<TextContainer noButtonMargin>
-			<Dropdown
-				overlay={
-					<Menu>
-						{TimeItems.map((item) => (
-							<Menu.Item onClick={timeMenuItemOnChangeHandler} key={item.enum}>
-								<Typography>{item.name}</Typography>
-							</Menu.Item>
-						))}
-					</Menu>
-				}
-			>
-				<Button>{selectedTime.name}</Button>
-			</Dropdown>
-		</TextContainer>
+		<Dropdown
+			menu={menu}
+			rootClassName="time-selection-menu"
+			className="time-selection-target"
+			trigger={['click']}
+		>
+			<Button>
+				<div className="button-selected-text">
+					<Globe size={14} />
+					<Typography.Text className="selected-value">
+						{selectedTime.name}
+					</Typography.Text>
+				</div>
+				<DownOutlined />
+			</Button>
+		</Dropdown>
 	);
 }
 
@@ -45,7 +58,7 @@ interface TimeMenuItemOnChangeHandlerEvent {
 }
 
 interface TimePreferenceDropDownProps {
-	setSelectedTime: React.Dispatch<React.SetStateAction<timePreferance>>;
+	setSelectedTime: Dispatch<SetStateAction<timePreferance>>;
 	selectedTime: timePreferance;
 }
 

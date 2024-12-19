@@ -1,35 +1,32 @@
-import GetMinMax from 'lib/getMinMax';
-import GetStartAndEndTime from 'lib/getStartAndEndTime';
+import getStartEndRangeTime from 'lib/getStartEndRangeTime';
 import store from 'store';
+import { Dashboard } from 'types/api/dashboard/getAll';
 
-export const getDashboardVariables = (): Record<string, unknown> => {
+export const getDashboardVariables = (
+	variables?: Dashboard['data']['variables'],
+): Record<string, unknown> => {
+	if (!variables) {
+		return {};
+	}
+
 	try {
-		const {
-			globalTime,
-			dashboards: { dashboards },
-		} = store.getState();
-		const [selectedDashboard] = dashboards;
-		const {
-			data: { variables = {} },
-		} = selectedDashboard;
-
-		const minMax = GetMinMax(globalTime.selectedTime, [
-			globalTime.minTime / 1000000,
-			globalTime.maxTime / 1000000,
-		]);
-
-		const { start, end } = GetStartAndEndTime({
+		const { globalTime } = store.getState();
+		const { start, end } = getStartEndRangeTime({
 			type: 'GLOBAL_TIME',
-			minTime: minMax.minTime,
-			maxTime: minMax.maxTime,
+			interval: globalTime.selectedTime,
 		});
+
 		const variablesTuple: Record<string, unknown> = {
 			SIGNOZ_START_TIME: parseInt(start, 10) * 1e3,
 			SIGNOZ_END_TIME: parseInt(end, 10) * 1e3,
 		};
-		Object.keys(variables).forEach((key) => {
-			variablesTuple[key] = variables[key].selectedValue;
+
+		Object.entries(variables).forEach(([, value]) => {
+			if (value?.name) {
+				variablesTuple[value.name] = value?.selectedValue;
+			}
 		});
+
 		return variablesTuple;
 	} catch (e) {
 		console.error(e);

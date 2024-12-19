@@ -1,7 +1,6 @@
 import ReleaseNoteProps from 'components/ReleaseNote/ReleaseNoteProps';
 import ReleaseNote0120 from 'components/ReleaseNote/Releases/ReleaseNote0120';
 import ROUTES from 'constants/routes';
-import React from 'react';
 import { useSelector } from 'react-redux';
 import { AppState } from 'store/reducers';
 import { UserFlags } from 'types/api/user/setFlags';
@@ -26,11 +25,12 @@ const allComponentMap: ComponentMapType[] = [
 			if (!path) {
 				return false;
 			}
-			const allowedPaths = [
+			const allowedPaths: string[] = [
 				ROUTES.LIST_ALL_ALERT,
 				ROUTES.APPLICATION,
 				ROUTES.ALL_DASHBOARD,
 			];
+
 			return (
 				userFlags?.ReleaseNote0120Hide !== 'Y' &&
 				allowedPaths.includes(path) &&
@@ -48,9 +48,9 @@ function ReleaseNote({ path }: ReleaseNoteProps): JSX.Element | null {
 		(state) => state.app,
 	);
 
-	const c = allComponentMap.find((item) => {
-		return item.match(path, currentVersion, userFlags);
-	});
+	const c = allComponentMap.find((item) =>
+		item.match(path, currentVersion, userFlags),
+	);
 
 	if (!c) {
 		return null;

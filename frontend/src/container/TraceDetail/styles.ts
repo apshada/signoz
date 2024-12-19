@@ -1,4 +1,5 @@
 import { volcano } from '@ant-design/colors';
+import { Col } from 'antd';
 import styled, { css } from 'styled-components';
 
 /**
@@ -16,7 +17,7 @@ export const leftContainer = [
  */
 export const flameAndTimelineContainer = [
 	css`
-		margin: 0 1rem 0 0;
+		margin: 1rem 1rem 0 0;
 	`,
 ];
 
@@ -43,7 +44,7 @@ export const timelineContainer = css`
 	margin: 0 1rem 0 0;
 `;
 export const ganttChartContainer = css`
-	margin: 1.5rem 1rem 0.5rem;
+	margin: 0 1rem 0.5rem;
 	display: flex;
 	flex-direction: column;
 	position: relative;
@@ -53,10 +54,13 @@ export const ganttChartContainer = css`
 `;
 
 export const selectedSpanDetailContainer = css`
+	width: 100%;
 	height: 100%;
 	position: relative;
 	display: flex;
 	flex-direction: column;
+	align-items: center;
+	padding-top: 12px;
 `;
 
 /**
@@ -112,4 +116,10 @@ export const FlameGraphMissingSpansContainer = styled.div`
 	padding: 0.5rem 0;
 	margin-top: 1rem;
 	border-radius: 0.25rem;
+`;
+
+export const TimeStampContainer = styled(Col)`
+	display: flex;
+	align-items: center;
+	justify-content: center;
 `;

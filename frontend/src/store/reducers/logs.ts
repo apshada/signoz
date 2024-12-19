@@ -1,4 +1,6 @@
+import ROUTES from 'constants/routes';
 import { parseQuery } from 'lib/logql';
+import { OrderPreferenceItems } from 'pages/Logs/config';
 import {
 	ADD_SEARCH_FIELD_QUERY_STRING,
 	FLUSH_LOGS,
@@ -10,18 +12,47 @@ import {
 	RESET_ID_START_AND_END,
 	SET_DETAILED_LOG_DATA,
 	SET_FIELDS,
+	SET_LINES_PER_ROW,
 	SET_LIVE_TAIL_START_TIME,
 	SET_LOADING,
 	SET_LOADING_AGGREGATE,
 	SET_LOG_LINES_PER_PAGE,
 	SET_LOGS,
 	SET_LOGS_AGGREGATE_SERIES,
+	SET_LOGS_ORDER,
 	SET_SEARCH_QUERY_PARSED_PAYLOAD,
 	SET_SEARCH_QUERY_STRING,
+	SET_VIEW_MODE,
 	STOP_LIVE_TAIL,
 	TOGGLE_LIVE_TAIL,
+	UPDATE_INTERESTING_FIELDS,
+	UPDATE_SELECTED_FIELDS,
 } from 'types/actions/logs';
 import { ILogsReducer } from 'types/reducer/logs';
+
+const supportedLogsOrder = [
+	OrderPreferenceItems.ASC,
+	OrderPreferenceItems.DESC,
+];
+
+function getLogsOrder(): OrderPreferenceItems {
+	// set the value of order from the URL only when order query param is present and the user is landing on the old logs explorer page
+	if (window.location.pathname === ROUTES.OLD_LOGS_EXPLORER) {
+		const orderParam = new URLSearchParams(window.location.search).get('order');
+
+		if (orderParam) {
+			// check if the order passed is supported else pass the default order
+			if (supportedLogsOrder.includes(orderParam as OrderPreferenceItems)) {
+				return orderParam as OrderPreferenceItems;
+			}
+
+			return OrderPreferenceItems.DESC;
+		}
+		return OrderPreferenceItems.DESC;
+	}
+
+	return OrderPreferenceItems.DESC;
+}
 
 const initialState: ILogsReducer = {
 	fields: {
@@ -33,7 +64,9 @@ const initialState: ILogsReducer = {
 		parsedQuery: [],
 	},
 	logs: [],
-	logLinesPerPage: 25,
+	logLinesPerPage: 200,
+	linesPerRow: 2,
+	viewMode: 'raw',
 	idEnd: '',
 	idStart: '',
 	isLoading: false,
@@ -43,6 +76,7 @@ const initialState: ILogsReducer = {
 	liveTailStartRange: 15,
 	selectedLogId: null,
 	detailedLog: null,
+	order: getLogsOrder(),
 };
 
 export const LogsReducer = (
@@ -83,7 +117,7 @@ export const LogsReducer = (
 				...state,
 				searchFilter: {
 					...state.searchFilter,
-					queryString: action.payload,
+					queryString: action.payload.searchQueryString,
 				},
 			};
 		}
@@ -123,10 +157,21 @@ export const LogsReducer = (
 				logs: logsData,
 			};
 		}
+
+		case SET_LOGS_ORDER: {
+			const order = action.payload;
+			return {
+				...state,
+				order,
+				idStart: '',
+				idEnd: '',
+			};
+		}
+
 		case SET_LOG_LINES_PER_PAGE: {
 			return {
 				...state,
-				logLinesPerPage: action.payload,
+				logLinesPerPage: action.payload.logsLinesPerPage,
 			};
 		}
 
@@ -200,6 +245,40 @@ export const LogsReducer = (
 			return {
 				...state,
 				logs: [],
+			};
+		}
+
+		case SET_LINES_PER_ROW: {
+			return {
+				...state,
+				linesPerRow: action.payload,
+			};
+		}
+
+		case SET_VIEW_MODE: {
+			return {
+				...state,
+				viewMode: action.payload,
+			};
+		}
+
+		case UPDATE_INTERESTING_FIELDS: {
+			return {
+				...state,
+				fields: {
+					...state.fields,
+					interesting: action.payload.field,
+				},
+			};
+		}
+
+		case UPDATE_SELECTED_FIELDS: {
+			return {
+				...state,
+				fields: {
+					...state.fields,
+					selected: action.payload.field,
+				},
 			};
 		}
 

@@ -1,6 +1,3 @@
-import getTriggeredApi from 'api/alerts/getTriggered';
-import useInterval from 'hooks/useInterval';
-import React, { useState } from 'react';
 import { Alerts } from 'types/api/alerts/getTriggered';
 
 import Filter, { Value } from './Filter';
@@ -8,69 +5,38 @@ import FilteredTable from './FilteredTable';
 import NoFilterTable from './NoFilterTable';
 import { NoTableContainer } from './styles';
 
-function TriggeredAlerts({ allAlerts }: TriggeredAlertsProps): JSX.Element {
-	const [allInitialAlerts, setInitialAlerts] = useState(allAlerts || []);
-
-	useInterval(() => {
-		(async (): Promise<void> => {
-			const response = await getTriggeredApi({
-				active: true,
-				inhibited: true,
-				silenced: false,
-			});
-
-			if (response.statusCode === 200 && response.payload !== null) {
-				// commented reduce() call as we no longer use /alerts/groups
-				// from alertmanager which needed re-grouping on client side
-				// const initialAlerts: Alerts[] = [];
-
-				// const allAlerts: Alerts[] = response.payload.reduce((acc, cur) => {
-				//	return [...acc, ...cur.alerts];
-				// }, initialAlerts);
-
-				setInitialAlerts(response.payload);
-			}
-		})();
-	}, 30000);
-
-	const [selectedGroup, setSelectedGroup] = useState<Value[]>([]);
-	const [selectedFilter, setSelectedFilter] = useState<Value[]>([]);
-
+function TriggeredAlerts({
+	allAlerts,
+	selectedFilter,
+	selectedGroup,
+	onSelectedFilterChange,
+	onSelectedGroupChange,
+}: TriggeredAlertsProps): JSX.Element {
 	return (
 		<div>
 			<Filter
-				{...{
-					allAlerts: allInitialAlerts,
-					selectedFilter,
-					selectedGroup,
-					setSelectedFilter,
-					setSelectedGroup,
-				}}
+				allAlerts={allAlerts}
+				selectedFilter={selectedFilter}
+				selectedGroup={selectedGroup}
+				onSelectedFilterChange={onSelectedFilterChange}
+				onSelectedGroupChange={onSelectedGroupChange}
 			/>
 
 			{selectedFilter.length === 0 && selectedGroup.length === 0 ? (
 				<NoTableContainer>
-					<NoFilterTable
-						selectedFilter={selectedFilter}
-						allAlerts={allInitialAlerts}
-					/>
+					<NoFilterTable selectedFilter={selectedFilter} allAlerts={allAlerts} />
 				</NoTableContainer>
 			) : (
 				<div>
 					{selectedFilter.length !== 0 && selectedGroup.length === 0 ? (
 						<NoTableContainer>
-							<NoFilterTable
-								selectedFilter={selectedFilter}
-								allAlerts={allInitialAlerts}
-							/>
+							<NoFilterTable selectedFilter={selectedFilter} allAlerts={allAlerts} />
 						</NoTableContainer>
 					) : (
 						<FilteredTable
-							{...{
-								allAlerts: allInitialAlerts,
-								selectedFilter,
-								selectedGroup,
-							}}
+							allAlerts={allAlerts}
+							selectedFilter={selectedFilter}
+							selectedGroup={selectedGroup}
 						/>
 					)}
 				</div>
@@ -81,6 +47,10 @@ function TriggeredAlerts({ allAlerts }: TriggeredAlertsProps): JSX.Element {
 
 interface TriggeredAlertsProps {
 	allAlerts: Alerts[];
+	selectedFilter: Array<Value>;
+	selectedGroup: Array<Value>;
+	onSelectedFilterChange: (value: Array<Value>) => void;
+	onSelectedGroupChange: (value: Array<Value>) => void;
 }
 
 export default TriggeredAlerts;

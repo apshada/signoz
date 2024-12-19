@@ -1,74 +1,296 @@
 import { Col } from 'antd';
-import FullView from 'container/GridGraphLayout/Graph/FullView/index.metricsBuilder';
+import logEvent from 'api/common/logEvent';
+import { ENTITY_VERSION_V4 } from 'constants/app';
+import { QueryParams } from 'constants/query';
+import { PANEL_TYPES } from 'constants/queryBuilder';
+import Graph from 'container/GridCardLayout/GridCard';
 import {
 	externalCallDuration,
 	externalCallDurationByAddress,
 	externalCallErrorPercent,
 	externalCallRpsByAddress,
 } from 'container/MetricsApplication/MetricsPageQueries/ExternalQueries';
-import { resourceAttributesToTagFilterItems } from 'lib/resourceAttributes';
-import React, { useMemo } from 'react';
-import { useSelector } from 'react-redux';
-import { useParams } from 'react-router-dom';
-import { AppState } from 'store/reducers';
-import { Widgets } from 'types/api/dashboard/getAll';
-import MetricReducer from 'types/reducer/metrics';
+import useResourceAttribute from 'hooks/useResourceAttribute';
+import {
+	convertRawQueriesToTraceSelectedTags,
+	resourceAttributesToTagFilterItems,
+} from 'hooks/useResourceAttribute/utils';
+import useUrlQuery from 'hooks/useUrlQuery';
+import getStep from 'lib/getStep';
+import history from 'lib/history';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useDispatch } from 'react-redux';
+import { useLocation, useParams } from 'react-router-dom';
+import store from 'store';
+import { UpdateTimeInterval } from 'store/actions';
+import { DataTypes } from 'types/api/queryBuilder/queryAutocompleteResponse';
+import { EQueryType } from 'types/common/dashboard';
+import { v4 as uuid } from 'uuid';
 
-import { Card, GraphContainer, GraphTitle, Row } from '../styles';
+import { GraphTitle, legend, MENU_ITEMS } from '../constant';
+import { getWidgetQueryBuilder } from '../MetricsApplication.factory';
+import { Card, GraphContainer, Row } from '../styles';
+import { Button } from './styles';
+import { IServiceName } from './types';
+import {
+	handleNonInQueryRange,
+	onGraphClickHandler,
+	onViewTracePopupClick,
+	useGetAPMToTracesQueries,
+} from './util';
 
-function External({ getWidgetQueryBuilder }: ExternalProps): JSX.Element {
-	const { servicename } = useParams<{ servicename?: string }>();
-	const { resourceAttributeQueries } = useSelector<AppState, MetricReducer>(
-		(state) => state.metrics,
+function External(): JSX.Element {
+	const [selectedTimeStamp, setSelectedTimeStamp] = useState<number>(0);
+
+	const { servicename: encodedServiceName } = useParams<IServiceName>();
+
+	const servicename = decodeURIComponent(encodedServiceName);
+	const { queries } = useResourceAttribute();
+
+	const urlQuery = useUrlQuery();
+	const { pathname } = useLocation();
+	const dispatch = useDispatch();
+
+	const onDragSelect = useCallback(
+		(start: number, end: number) => {
+			const startTimestamp = Math.trunc(start);
+			const endTimestamp = Math.trunc(end);
+
+			urlQuery.set(QueryParams.startTime, startTimestamp.toString());
+			urlQuery.set(QueryParams.endTime, endTimestamp.toString());
+			const generatedUrl = `${pathname}?${urlQuery.toString()}`;
+			history.push(generatedUrl);
+
+			if (startTimestamp !== endTimestamp) {
+				dispatch(UpdateTimeInterval('custom', [startTimestamp, endTimestamp]));
+			}
+		},
+		[dispatch, pathname, urlQuery],
 	);
 
 	const tagFilterItems = useMemo(
-		() => resourceAttributesToTagFilterItems(resourceAttributeQueries) || [],
-		[resourceAttributeQueries],
+		() =>
+			handleNonInQueryRange(resourceAttributesToTagFilterItems(queries)) || [],
+		[queries],
 	);
 
-	const legend = '{{address}}';
+	const externalCallErrorWidget = useMemo(
+		() =>
+			getWidgetQueryBuilder({
+				query: {
+					queryType: EQueryType.QUERY_BUILDER,
+					promql: [],
+					builder: externalCallErrorPercent({
+						servicename,
+						legend: legend.address,
+						tagFilterItems,
+					}),
+					clickhouse_sql: [],
+					id: uuid(),
+				},
+				title: GraphTitle.EXTERNAL_CALL_ERROR_PERCENTAGE,
+				panelTypes: PANEL_TYPES.TIME_SERIES,
+				yAxisUnit: '%',
+				id: GraphTitle.EXTERNAL_CALL_ERROR_PERCENTAGE,
+			}),
+		[servicename, tagFilterItems],
+	);
+
+	const selectedTraceTags = useMemo(
+		() => JSON.stringify(convertRawQueriesToTraceSelectedTags(queries) || []),
+		[queries],
+	);
+
+	const externalCallDurationWidget = useMemo(
+		() =>
+			getWidgetQueryBuilder({
+				query: {
+					queryType: EQueryType.QUERY_BUILDER,
+					promql: [],
+					builder: externalCallDuration({
+						servicename,
+						tagFilterItems,
+					}),
+					clickhouse_sql: [],
+					id: uuid(),
+				},
+				title: GraphTitle.EXTERNAL_CALL_DURATION,
+				panelTypes: PANEL_TYPES.TIME_SERIES,
+				yAxisUnit: 'ms',
+				id: GraphTitle.EXTERNAL_CALL_DURATION,
+				fillSpans: true,
+			}),
+		[servicename, tagFilterItems],
+	);
+
+	const errorApmToTraceQuery = useGetAPMToTracesQueries({
+		servicename,
+		isExternalCall: true,
+		filters: [
+			{
+				id: uuid().slice(0, 8),
+				key: {
+					key: 'hasError',
+					dataType: DataTypes.bool,
+					type: 'tag',
+					isColumn: true,
+					isJSON: false,
+					id: 'hasError--bool--tag--true',
+				},
+				op: 'in',
+				value: ['true'],
+			},
+		],
+	});
+
+	const stepInterval = useMemo(
+		() =>
+			getStep({
+				end: store.getState().globalTime.maxTime,
+				inputFormat: 'ns',
+				start: store.getState().globalTime.minTime,
+			}),
+		[],
+	);
+	const logEventCalledRef = useRef(false);
+	useEffect(() => {
+		if (!logEventCalledRef.current) {
+			const selectedEnvironments = queries.find(
+				(val) => val.tagKey === 'resource_deployment_environment',
+			)?.tagValue;
+
+			logEvent('APM: Service detail page visited', {
+				selectedEnvironments,
+				resourceAttributeUsed: !!queries?.length,
+				section: 'externalMetrics',
+			});
+			logEventCalledRef.current = true;
+		}
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
+
+	const externalCallRPSWidget = useMemo(
+		() =>
+			getWidgetQueryBuilder({
+				query: {
+					queryType: EQueryType.QUERY_BUILDER,
+					promql: [],
+					builder: externalCallRpsByAddress({
+						servicename,
+						legend: legend.address,
+						tagFilterItems,
+					}),
+					clickhouse_sql: [],
+					id: uuid(),
+				},
+				title: GraphTitle.EXTERNAL_CALL_RPS_BY_ADDRESS,
+				panelTypes: PANEL_TYPES.TIME_SERIES,
+				yAxisUnit: 'reqps',
+				id: GraphTitle.EXTERNAL_CALL_RPS_BY_ADDRESS,
+				fillSpans: true,
+			}),
+		[servicename, tagFilterItems],
+	);
+
+	const externalCallDurationAddressWidget = useMemo(
+		() =>
+			getWidgetQueryBuilder({
+				query: {
+					queryType: EQueryType.QUERY_BUILDER,
+					promql: [],
+					builder: externalCallDurationByAddress({
+						servicename,
+						legend: legend.address,
+						tagFilterItems,
+					}),
+					clickhouse_sql: [],
+					id: uuid(),
+				},
+				title: GraphTitle.EXTERNAL_CALL_DURATION_BY_ADDRESS,
+				panelTypes: PANEL_TYPES.TIME_SERIES,
+				yAxisUnit: 'ms',
+				id: GraphTitle.EXTERNAL_CALL_DURATION_BY_ADDRESS,
+				fillSpans: true,
+			}),
+		[servicename, tagFilterItems],
+	);
+
+	const apmToTraceQuery = useGetAPMToTracesQueries({
+		servicename,
+		isExternalCall: true,
+	});
 
 	return (
 		<>
 			<Row gutter={24}>
 				<Col span={12}>
-					<Card>
-						<GraphTitle>External Call Error Percentage</GraphTitle>
+					<Button
+						type="default"
+						size="small"
+						id="external_call_error_percentage_button"
+						onClick={onViewTracePopupClick({
+							servicename,
+							selectedTraceTags,
+							timestamp: selectedTimeStamp,
+							apmToTraceQuery: errorApmToTraceQuery,
+							stepInterval,
+						})}
+					>
+						View Traces
+					</Button>
+					<Card data-testid="external_call_error_percentage">
 						<GraphContainer>
-							<FullView
-								name="external_call_error_percentage"
-								fullViewOptions={false}
-								widget={getWidgetQueryBuilder({
-									queryType: 1,
-									promQL: [],
-									metricsBuilder: externalCallErrorPercent({
-										servicename,
-										legend,
-										tagFilterItems,
-									}),
-									clickHouse: [],
-								})}
-								yAxisUnit="%"
+							<Graph
+								headerMenuList={MENU_ITEMS}
+								widget={externalCallErrorWidget}
+								onClickHandler={(xValue, yValue, mouseX, mouseY): void => {
+									onGraphClickHandler(setSelectedTimeStamp)(
+										xValue,
+										yValue,
+										mouseX,
+										mouseY,
+										'external_call_error_percentage',
+									);
+								}}
+								onDragSelect={onDragSelect}
+								version={ENTITY_VERSION_V4}
 							/>
 						</GraphContainer>
 					</Card>
 				</Col>
 
 				<Col span={12}>
-					<Card>
-						<GraphTitle>External Call duration</GraphTitle>
+					<Button
+						type="default"
+						size="small"
+						id="external_call_duration_button"
+						onClick={onViewTracePopupClick({
+							servicename,
+							selectedTraceTags,
+							timestamp: selectedTimeStamp,
+							apmToTraceQuery,
+							stepInterval,
+						})}
+					>
+						View Traces
+					</Button>
+
+					<Card data-testid="external_call_duration">
 						<GraphContainer>
-							<FullView
-								name="external_call_duration"
-								fullViewOptions={false}
-								widget={getWidgetQueryBuilder({
-									queryType: 1,
-									promQL: [],
-									metricsBuilder: externalCallDuration({ servicename, tagFilterItems }),
-									clickHouse: [],
-								})}
-								yAxisUnit="ms"
+							<Graph
+								headerMenuList={MENU_ITEMS}
+								widget={externalCallDurationWidget}
+								onClickHandler={(xValue, yValue, mouseX, mouseY): void => {
+									onGraphClickHandler(setSelectedTimeStamp)(
+										xValue,
+										yValue,
+										mouseX,
+										mouseY,
+										'external_call_duration',
+									);
+								}}
+								onDragSelect={onDragSelect}
+								version={ENTITY_VERSION_V4}
 							/>
 						</GraphContainer>
 					</Card>
@@ -77,46 +299,73 @@ function External({ getWidgetQueryBuilder }: ExternalProps): JSX.Element {
 
 			<Row gutter={24}>
 				<Col span={12}>
-					<Card>
-						<GraphTitle>External Call RPS(by Address)</GraphTitle>
+					<Button
+						type="default"
+						size="small"
+						id="external_call_rps_by_address_button"
+						onClick={onViewTracePopupClick({
+							servicename,
+							selectedTraceTags,
+							timestamp: selectedTimeStamp,
+							apmToTraceQuery,
+							stepInterval,
+						})}
+					>
+						View Traces
+					</Button>
+					<Card data-testid="external_call_rps_by_address">
 						<GraphContainer>
-							<FullView
-								name="external_call_rps_by_address"
-								fullViewOptions={false}
-								widget={getWidgetQueryBuilder({
-									queryType: 1,
-									promQL: [],
-									metricsBuilder: externalCallRpsByAddress({
-										servicename,
-										legend,
-										tagFilterItems,
-									}),
-									clickHouse: [],
-								})}
-								yAxisUnit="reqps"
+							<Graph
+								widget={externalCallRPSWidget}
+								headerMenuList={MENU_ITEMS}
+								onClickHandler={(xValue, yValue, mouseX, mouseY): Promise<void> =>
+									onGraphClickHandler(setSelectedTimeStamp)(
+										xValue,
+										yValue,
+										mouseX,
+										mouseY,
+										'external_call_rps_by_address',
+									)
+								}
+								onDragSelect={onDragSelect}
+								version={ENTITY_VERSION_V4}
 							/>
 						</GraphContainer>
 					</Card>
 				</Col>
 
 				<Col span={12}>
-					<Card>
-						<GraphTitle>External Call duration(by Address)</GraphTitle>
+					<Button
+						type="default"
+						size="small"
+						id="external_call_duration_by_address_button"
+						onClick={onViewTracePopupClick({
+							servicename,
+							selectedTraceTags,
+							timestamp: selectedTimeStamp,
+							apmToTraceQuery,
+							stepInterval,
+						})}
+					>
+						View Traces
+					</Button>
+
+					<Card data-testid="external_call_duration_by_address">
 						<GraphContainer>
-							<FullView
-								name="external_call_duration_by_address"
-								fullViewOptions={false}
-								widget={getWidgetQueryBuilder({
-									queryType: 1,
-									promQL: [],
-									metricsBuilder: externalCallDurationByAddress({
-										servicename,
-										legend,
-										tagFilterItems,
-									}),
-									clickHouse: [],
-								})}
-								yAxisUnit="ms"
+							<Graph
+								widget={externalCallDurationAddressWidget}
+								headerMenuList={MENU_ITEMS}
+								onClickHandler={(xValue, yValue, mouseX, mouseY): void => {
+									onGraphClickHandler(setSelectedTimeStamp)(
+										xValue,
+										yValue,
+										mouseX,
+										mouseY,
+										'external_call_duration_by_address',
+									);
+								}}
+								onDragSelect={onDragSelect}
+								version={ENTITY_VERSION_V4}
 							/>
 						</GraphContainer>
 					</Card>
@@ -124,10 +373,6 @@ function External({ getWidgetQueryBuilder }: ExternalProps): JSX.Element {
 			</Row>
 		</>
 	);
-}
-
-interface ExternalProps {
-	getWidgetQueryBuilder: (query: Widgets['query']) => Widgets;
 }
 
 export default External;

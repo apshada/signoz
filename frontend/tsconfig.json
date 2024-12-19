@@ -1,10 +1,11 @@
 {
 	"compilerOptions": {
+		"sourceMap": true,
 		"outDir": "./dist/",
 		"noImplicitAny": true,
 		"module": "esnext",
 		"target": "es5",
-		"jsx": "react",
+		"jsx": "react-jsx",
 		"allowJs": true,
 		"strict": true,
 		"esModuleInterop": true,
@@ -18,13 +19,23 @@
 		"isolatedModules": true,
 		"noEmit": true,
 		"baseUrl": "./src",
+		"paths": {
+			"@constants/*": ["/container/OnboardingContainer/constants/*"]
+		},
 		"downlevelIteration": true,
-		"plugins": [{ "name": "typescript-plugin-css-modules" }],
+		"plugins": [
+			{
+				"name": "typescript-plugin-css-modules"
+			}
+		],
 		"types": ["node", "jest"]
 	},
 	"exclude": ["node_modules"],
 	"include": [
 		"./src",
+		"./src/**/*.ts",
+		"src/**/*.tsx",
+		"src/**/*.d.ts",
 		"./babel.config.js",
 		"./jest.config.ts",
 		"./.eslintrc.js",
@@ -38,5 +49,6 @@
 		"./webpack.config.prod.js",
 		"./jest.setup.ts",
 		"./tests/**.ts",
+		"./**/*.d.ts"
 	]
 }

@@ -1,13 +1,13 @@
-import { PlusOutlined } from '@ant-design/icons';
-import { Col, Tooltip, Typography } from 'antd';
+import './AddTags.styles.scss';
+
+import { Col, Tooltip } from 'antd';
 import Input from 'components/Input';
-import React, { useState } from 'react';
+import { Dispatch, SetStateAction, useState } from 'react';
 
 import { InputContainer, NewTagContainer, TagsContainer } from './styles';
 
 function AddTags({ tags, setTags }: AddTagsProps): JSX.Element {
 	const [inputValue, setInputValue] = useState<string>('');
-	const [inputVisible, setInputVisible] = useState<boolean>(false);
 	const [editInputIndex, setEditInputIndex] = useState(-1);
 	const [editInputValue, setEditInputValue] = useState('');
 
@@ -15,7 +15,6 @@ function AddTags({ tags, setTags }: AddTagsProps): JSX.Element {
 		if (inputValue) {
 			setTags([...tags, inputValue]);
 		}
-		setInputVisible(false);
 		setInputValue('');
 	};
 
@@ -32,13 +31,9 @@ function AddTags({ tags, setTags }: AddTagsProps): JSX.Element {
 		setTags(newTags);
 	};
 
-	const showInput = (): void => {
-		setInputVisible(true);
-	};
-
 	const onChangeHandler = (
 		value: string,
-		func: React.Dispatch<React.SetStateAction<string>>,
+		func: Dispatch<SetStateAction<string>>,
 	): void => {
 		func(value);
 	};
@@ -48,7 +43,7 @@ function AddTags({ tags, setTags }: AddTagsProps): JSX.Element {
 			{tags.map((tag, index) => {
 				if (editInputIndex === index) {
 					return (
-						<Col key={tag} lg={4}>
+						<Col key={tag} lg={4} className="edit-input">
 							<Input
 								size="small"
 								value={editInputValue}
@@ -65,7 +60,12 @@ function AddTags({ tags, setTags }: AddTagsProps): JSX.Element {
 				const isLongTag = tag.length > 20;
 
 				const tagElem = (
-					<NewTagContainer closable key={tag} onClose={(): void => handleClose(tag)}>
+					<NewTagContainer
+						closable
+						key={tag}
+						onClose={(): void => handleClose(tag)}
+						className="tag-container"
+					>
 						<span
 							onDoubleClick={(e): void => {
 								setEditInputIndex(index);
@@ -87,33 +87,26 @@ function AddTags({ tags, setTags }: AddTagsProps): JSX.Element {
 				);
 			})}
 
-			{inputVisible && (
-				<InputContainer lg={4}>
-					<Input
-						type="text"
-						size="small"
-						value={inputValue}
-						onChangeHandler={(event): void =>
-							onChangeHandler(event.target.value, setInputValue)
-						}
-						onBlurHandler={handleInputConfirm}
-						onPressEnterHandler={handleInputConfirm}
-					/>
-				</InputContainer>
-			)}
-
-			{!inputVisible && (
-				<NewTagContainer icon={<PlusOutlined />} onClick={showInput}>
-					<Typography>New Tag</Typography>
-				</NewTagContainer>
-			)}
+			<InputContainer>
+				<Input
+					type="text"
+					value={inputValue}
+					rootClassName="tags-input"
+					placeholder="Start typing your tag name"
+					onChangeHandler={(event): void =>
+						onChangeHandler(event.target.value, setInputValue)
+					}
+					onBlurHandler={handleInputConfirm}
+					onPressEnterHandler={handleInputConfirm}
+				/>
+			</InputContainer>
 		</TagsContainer>
 	);
 }
 
 interface AddTagsProps {
 	tags: string[];
-	setTags: React.Dispatch<React.SetStateAction<string[]>>;
+	setTags: Dispatch<SetStateAction<string[]>>;
 }
 
 export default AddTags;

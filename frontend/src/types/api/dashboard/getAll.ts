@@ -1,13 +1,12 @@
-import { GRAPH_TYPES } from 'container/NewDashboard/ComponentsSlider';
+import { PANEL_GROUP_TYPES, PANEL_TYPES } from 'constants/queryBuilder';
+import { ThresholdProps } from 'container/NewWidget/RightContainer/Threshold/types';
 import { timePreferenceType } from 'container/NewWidget/RightContainer/timeItems';
+import { ReactNode } from 'react';
 import { Layout } from 'react-grid-layout';
-import {
-	EAggregateOperator,
-	EQueryType,
-	EReduceOperator,
-} from 'types/common/dashboard';
+import { Query } from 'types/api/queryBuilder/queryBuilderData';
 
-import { QueryData } from '../widgets/getQuery';
+import { IField } from '../logs/fields';
+import { BaseAutocompleteData } from '../queryBuilder/queryAutocompleteResponse';
 
 export type PayloadProps = Dashboard[];
 
@@ -18,6 +17,8 @@ export const VariableSortTypeArr = ['DISABLED', 'ASC', 'DESC'] as const;
 export type TSortVariableValuesType = typeof VariableSortTypeArr[number];
 
 export interface IDashboardVariable {
+	id: string;
+	order?: any;
 	name?: string; // key will be the source of truth
 	description: string;
 	type: TVariableQueryType;
@@ -31,50 +32,82 @@ export interface IDashboardVariable {
 	sort: TSortVariableValuesType;
 	multiSelect: boolean;
 	showALLOption: boolean;
-	selectedValue?: null | string | string[];
+	selectedValue?:
+		| null
+		| string
+		| number
+		| boolean
+		| (string | number | boolean)[];
 	// Internal use
 	modificationUUID?: string;
 	allSelected?: boolean;
+	change?: boolean;
 }
 export interface Dashboard {
 	id: number;
 	uuid: string;
 	created_at: string;
 	updated_at: string;
+	created_by: string;
+	updated_by: string;
 	data: DashboardData;
+	isLocked?: boolean;
+}
+
+export interface DashboardTemplate {
+	name: string;
+	icon: React.ReactElement;
+	id: string;
+	description: string;
+	previewImage: string;
 }
 
 export interface DashboardData {
+	uuid?: string;
 	description?: string;
 	tags?: string[];
 	name?: string;
-	widgets?: Widgets[];
+	widgets?: Array<WidgetRow | Widgets>;
 	title: string;
 	layout?: Layout[];
+	panelMap?: Record<string, { widgets: Layout[]; collapsed: boolean }>;
 	variables: Record<string, IDashboardVariable>;
+	version?: string;
+	image?: string;
 }
 
+export interface WidgetRow {
+	id: string;
+	panelTypes: PANEL_GROUP_TYPES;
+	title: ReactNode;
+	description: string;
+}
+
+export interface ColumnUnit {
+	[key: string]: string;
+}
 export interface IBaseWidget {
 	isStacked: boolean;
 	id: string;
-	panelTypes: GRAPH_TYPES;
-	title: string;
+	panelTypes: PANEL_TYPES;
+	title: ReactNode;
 	description: string;
 	opacity: string;
 	nullZeroValues: string;
 	timePreferance: timePreferenceType;
-	queryData: {
-		loading: boolean;
-		error: boolean;
-		errorMessage: string;
-		data: {
-			query?: string;
-			legend?: string;
-			queryData: QueryData[];
-		};
-	};
 	stepSize?: number;
 	yAxisUnit?: string;
+	stackedBarChart?: boolean;
+	bucketCount?: number;
+	bucketWidth?: number;
+	mergeAllActiveQueries?: boolean;
+	thresholds?: ThresholdProps[];
+	softMin: number | null;
+	softMax: number | null;
+	fillSpans?: boolean;
+	columnUnits?: ColumnUnit;
+	selectedLogFields: IField[] | null;
+	selectedTracesFields: BaseAutocompleteData[] | null;
 }
 export interface Widgets extends IBaseWidget {
 	query: Query;
@@ -82,50 +115,6 @@ export interface Widgets extends IBaseWidget {
 
 export interface PromQLWidgets extends IBaseWidget {
 	query: { query: string; legend: string }[];
-}
-export interface Query {
-	queryType: EQueryType;
-	promQL: IPromQLQuery[];
-	metricsBuilder: {
-		formulas: IMetricsBuilderFormula[];
-		queryBuilder: IMetricsBuilderQuery[];
-	};
-	clickHouse: IClickHouseQuery[];
-}
-
-export interface IMetricsBuilderFormula {
-	expression: string;
-	disabled: boolean;
-	name: string;
-	legend: string;
-}
-export interface IMetricsBuilderQuery {
-	aggregateOperator: EAggregateOperator;
-	disabled: boolean;
-	name: string;
-	legend: string;
-	metricName: string | null;
-	groupBy?: string[];
-	tagFilters: IQueryBuilderTagFilters;
-	reduceTo?: EReduceOperator;
-}
-
-export interface IQueryBuilderTagFilters {
-	op: string;
-	items: IQueryBuilderTagFilterItems[] | [];
-}
-
-export interface IClickHouseQuery {
-	name: string;
-	rawQuery: string;
-	legend: string;
-	disabled: boolean;
-}
-export interface IPromQLQuery {
-	query: string;
-	legend: string;
-	disabled: boolean;
-	name: string;
 }
 
 export interface IQueryBuilderTagFilterItems {

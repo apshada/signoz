@@ -4,16 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/go-co-op/gocron"
 	"github.com/google/uuid"
-	"github.com/jmoiron/sqlx"
 
 	"go.uber.org/zap"
 
+	"go.signoz.io/signoz/ee/query-service/dao"
 	licenseserver "go.signoz.io/signoz/ee/query-service/integrations/signozio"
 	"go.signoz.io/signoz/ee/query-service/license"
 	"go.signoz.io/signoz/ee/query-service/model"
@@ -28,9 +31,6 @@ const (
 )
 
 var (
-	// send usage every 24 hour
-	uploadFrequency = 24 * time.Hour
-
 	locker = stateUnlocked
 )
 
@@ -39,20 +39,30 @@ type Manager struct {
 
 	licenseRepo *license.Repo
 
-	// end the usage routine, this is important to gracefully
-	// stopping usage reporting and protect in-consistent updates
-	done chan struct{}
+	scheduler *gocron.Scheduler
 
-	// terminated waits for the UsageExporter go routine to end
-	terminated chan struct{}
+	modelDao dao.ModelDao
+
+	tenantID string
 }
 
-func New(dbType string, db *sqlx.DB, licenseRepo *license.Repo, clickhouseConn clickhouse.Conn) (*Manager, error) {
+func New(dbType string, modelDao dao.ModelDao, licenseRepo *license.Repo, clickhouseConn clickhouse.Conn) (*Manager, error) {
+	hostNameRegex := regexp.MustCompile(`tcp://(?P<hostname>.*):`)
+	hostNameRegexMatches := hostNameRegex.FindStringSubmatch(os.Getenv("ClickHouseUrl"))
+
+	tenantID := ""
+	if len(hostNameRegexMatches) == 2 {
+		tenantID = hostNameRegexMatches[1]
+		tenantID = strings.TrimSuffix(tenantID, "-clickhouse")
+	}
 
 	m := &Manager{
 		// repository:     repo,
 		clickhouseConn: clickhouseConn,
 		licenseRepo:    licenseRepo,
+		scheduler:      gocron.NewScheduler(time.UTC).Every(1).Day().At("00:00"), // send usage every at 00:00 UTC
+		modelDao:       modelDao,
+		tenantID:       tenantID,
 	}
 	return m, nil
 }
@@ -64,37 +74,30 @@ func (lm *Manager) Start() error {
 		return fmt.Errorf("usage exporter is locked")
 	}
 
-	go lm.UsageExporter(context.Background())
+	_, err := lm.scheduler.Do(func() { lm.UploadUsage() })
+	if err != nil {
+		return err
+	}
+
+	// upload usage once when starting the service
+	lm.UploadUsage()
+
+	lm.scheduler.StartAsync()
 
 	return nil
 }
-
-func (lm *Manager) UsageExporter(ctx context.Context) {
-	defer close(lm.terminated)
-
-	uploadTicker := time.NewTicker(uploadFrequency)
-	defer uploadTicker.Stop()
-
-	for {
-		select {
-		case <-lm.done:
-			return
-		case <-uploadTicker.C:
-			lm.UploadUsage(ctx)
-		}
-	}
-}
-
-func (lm *Manager) UploadUsage(ctx context.Context) error {
+func (lm *Manager) UploadUsage() {
+	ctx := context.Background()
 	// check if license is present or not
-	license, err := lm.licenseRepo.GetActiveLicense(context.Background())
+	license, err := lm.licenseRepo.GetActiveLicense(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get active license")
+		zap.L().Error("failed to get active license", zap.Error(err))
+		return
 	}
 	if license == nil {
 		// we will not start the usage reporting if license is not present.
-		zap.S().Info("no license present, skipping usage reporting")
-		return nil
+		zap.L().Info("no license present, skipping usage reporting")
+		return
 	}
 
 	usages := []model.UsageDB{}
@@ -120,7 +123,8 @@ func (lm *Manager) UploadUsage(ctx context.Context) error {
 		dbusages := []model.UsageDB{}
 		err := lm.clickhouseConn.Select(ctx, &dbusages, fmt.Sprintf(query, db, db), time.Now().Add(-(24 * time.Hour)))
 		if err != nil && !strings.Contains(err.Error(), "doesn't exist") {
-			return err
+			zap.L().Error("failed to get usage from clickhouse: %v", zap.Error(err))
+			return
 		}
 		for _, u := range dbusages {
 			u.Type = db
@@ -129,29 +133,42 @@ func (lm *Manager) UploadUsage(ctx context.Context) error {
 	}
 
 	if len(usages) <= 0 {
-		zap.S().Info("no snapshots to upload, skipping.")
-		return nil
+		zap.L().Info("no snapshots to upload, skipping.")
+		return
 	}
 
-	zap.S().Info("uploading usage data")
+	zap.L().Info("uploading usage data")
+
+	orgName := ""
+	orgNames, orgError := lm.modelDao.GetOrgs(ctx)
+	if orgError != nil {
+		zap.L().Error("failed to get org data: %v", zap.Error(orgError))
+	}
+	if len(orgNames) == 1 {
+		orgName = orgNames[0].Name
+	}
 
 	usagesPayload := []model.Usage{}
 	for _, usage := range usages {
 		usageDataBytes, err := encryption.Decrypt([]byte(usage.ExporterID[:32]), []byte(usage.Data))
 		if err != nil {
-			return err
+			zap.L().Error("error while decrypting usage data: %v", zap.Error(err))
+			return
 		}
 
 		usageData := model.Usage{}
 		err = json.Unmarshal(usageDataBytes, &usageData)
 		if err != nil {
-			return err
+			zap.L().Error("error while unmarshalling usage data: %v", zap.Error(err))
+			return
 		}
 
 		usageData.CollectorID = usage.CollectorID
 		usageData.ExporterID = usage.ExporterID
 		usageData.Type = usage.Type
 		usageData.Tenant = usage.Tenant
+		usageData.OrgName = orgName
+		usageData.TenantId = lm.tenantID
 		usagesPayload = append(usagesPayload, usageData)
 	}
 
@@ -160,34 +177,33 @@ func (lm *Manager) UploadUsage(ctx context.Context) error {
 		LicenseKey: key,
 		Usage:      usagesPayload,
 	}
-	err = lm.UploadUsageWithExponentalBackOff(ctx, payload)
-	if err != nil {
-		return err
-	}
-	return nil
+	lm.UploadUsageWithExponentalBackOff(ctx, payload)
 }
 
-func (lm *Manager) UploadUsageWithExponentalBackOff(ctx context.Context, payload model.UsagePayload) error {
+func (lm *Manager) UploadUsageWithExponentalBackOff(ctx context.Context, payload model.UsagePayload) {
 	for i := 1; i <= MaxRetries; i++ {
 		apiErr := licenseserver.SendUsage(ctx, payload)
 		if apiErr != nil && i == MaxRetries {
-			zap.S().Errorf("retries stopped : %v", zap.Error(apiErr))
+			zap.L().Error("retries stopped : %v", zap.Error(apiErr))
 			// not returning error here since it is captured in the failed count
-			return nil
+			return
 		} else if apiErr != nil {
 			// sleeping for exponential backoff
 			sleepDuration := RetryInterval * time.Duration(i)
-			zap.S().Errorf("failed to upload snapshot retrying after %v secs : %v", sleepDuration.Seconds(), zap.Error(apiErr.Err))
+			zap.L().Error("failed to upload snapshot retrying after %v secs : %v", zap.Duration("sleepDuration", sleepDuration), zap.Error(apiErr.Err))
 			time.Sleep(sleepDuration)
 		} else {
 			break
 		}
 	}
-	return nil
 }
 
 func (lm *Manager) Stop() {
-	close(lm.done)
+	lm.scheduler.Stop()
+
+	zap.L().Info("sending usage data before shutting down")
+	// send usage before shutting down
+	lm.UploadUsage()
+
 	atomic.StoreUint32(&locker, stateUnlocked)
-	<-lm.terminated
 }

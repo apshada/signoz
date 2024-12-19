@@ -1,6 +1,5 @@
-import { Input } from 'antd';
-import FormItem from 'antd/lib/form/FormItem';
-import React from 'react';
+import { Form, Input } from 'antd';
+import { Dispatch, SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { PagerChannel } from '../../CreateAlertChannels/config';
@@ -11,7 +10,7 @@ function PagerForm({ setSelectedConfig }: PagerFormProps): JSX.Element {
 	const { t } = useTranslation('channels');
 	return (
 		<>
-			<FormItem name="routing_key" label={t('field_pager_routing_key')} required>
+			<Form.Item name="routing_key" label={t('field_pager_routing_key')} required>
 				<Input
 					onChange={(event): void => {
 						setSelectedConfig((value) => ({
@@ -19,10 +18,11 @@ function PagerForm({ setSelectedConfig }: PagerFormProps): JSX.Element {
 							routing_key: event.target.value,
 						}));
 					}}
+					data-testid="pager-routing-key-textbox"
 				/>
-			</FormItem>
+			</Form.Item>
 
-			<FormItem
+			<Form.Item
 				name="description"
 				help={t('help_pager_description')}
 				label={t('field_pager_description')}
@@ -37,10 +37,11 @@ function PagerForm({ setSelectedConfig }: PagerFormProps): JSX.Element {
 						}))
 					}
 					placeholder={t('placeholder_pager_description')}
+					data-testid="pager-description-textarea"
 				/>
-			</FormItem>
+			</Form.Item>
 
-			<FormItem
+			<Form.Item
 				name="severity"
 				help={t('help_pager_severity')}
 				label={t('field_pager_severity')}
@@ -52,10 +53,11 @@ function PagerForm({ setSelectedConfig }: PagerFormProps): JSX.Element {
 							severity: event.target.value,
 						}))
 					}
+					data-testid="pager-severity-textbox"
 				/>
-			</FormItem>
+			</Form.Item>
 
-			<FormItem
+			<Form.Item
 				name="details"
 				help={t('help_pager_details')}
 				label={t('field_pager_details')}
@@ -68,10 +70,11 @@ function PagerForm({ setSelectedConfig }: PagerFormProps): JSX.Element {
 							details: event.target.value,
 						}))
 					}
+					data-testid="pager-additional-details-textarea"
 				/>
-			</FormItem>
+			</Form.Item>
 
-			<FormItem
+			<Form.Item
 				name="component"
 				help={t('help_pager_component')}
 				label={t('field_pager_component')}
@@ -84,9 +87,9 @@ function PagerForm({ setSelectedConfig }: PagerFormProps): JSX.Element {
 						}))
 					}
 				/>
-			</FormItem>
+			</Form.Item>
 
-			<FormItem
+			<Form.Item
 				name="group"
 				help={t('help_pager_group')}
 				label={t('field_pager_group')}
@@ -98,10 +101,11 @@ function PagerForm({ setSelectedConfig }: PagerFormProps): JSX.Element {
 							group: event.target.value,
 						}))
 					}
+					data-testid="pager-group-textarea"
 				/>
-			</FormItem>
+			</Form.Item>
 
-			<FormItem
+			<Form.Item
 				name="class"
 				help={t('help_pager_class')}
 				label={t('field_pager_class')}
@@ -113,9 +117,10 @@ function PagerForm({ setSelectedConfig }: PagerFormProps): JSX.Element {
 							class: event.target.value,
 						}))
 					}
+					data-testid="pager-class-textarea"
 				/>
-			</FormItem>
-			<FormItem
+			</Form.Item>
+			<Form.Item
 				name="client"
 				help={t('help_pager_client')}
 				label={t('field_pager_client')}
@@ -127,10 +132,11 @@ function PagerForm({ setSelectedConfig }: PagerFormProps): JSX.Element {
 							client: event.target.value,
 						}))
 					}
+					data-testid="pager-client-textarea"
 				/>
-			</FormItem>
+			</Form.Item>
 
-			<FormItem
+			<Form.Item
 				name="client_url"
 				help={t('help_pager_client_url')}
 				label={t('field_pager_client_url')}
@@ -142,14 +148,15 @@ function PagerForm({ setSelectedConfig }: PagerFormProps): JSX.Element {
 							client_url: event.target.value,
 						}))
 					}
+					data-testid="pager-client-url-textarea"
 				/>
-			</FormItem>
+			</Form.Item>
 		</>
 	);
 }
 
 interface PagerFormProps {
-	setSelectedConfig: React.Dispatch<React.SetStateAction<Partial<PagerChannel>>>;
+	setSelectedConfig: Dispatch<SetStateAction<Partial<PagerChannel>>>;
 }
 
 export default PagerForm;

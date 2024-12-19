@@ -1,292 +1,147 @@
-import { PlusOutlined } from '@ant-design/icons';
-import { Button, notification, Tabs } from 'antd';
-import MetricsBuilderFormula from 'container/NewWidget/LeftContainer/QuerySection/QueryBuilder/queryBuilder/formula';
-import MetricsBuilder from 'container/NewWidget/LeftContainer/QuerySection/QueryBuilder/queryBuilder/query';
-import {
-	IQueryBuilderFormulaHandleChange,
-	IQueryBuilderQueryHandleChange,
-} from 'container/NewWidget/LeftContainer/QuerySection/QueryBuilder/queryBuilder/types';
-import React, { useCallback } from 'react';
+import './QuerySection.styles.scss';
+
+import { Color } from '@signozhq/design-tokens';
+import { Button, Tabs, Tooltip } from 'antd';
+import logEvent from 'api/common/logEvent';
+import PromQLIcon from 'assets/Dashboard/PromQl';
+import { ALERTS_DATA_SOURCE_MAP } from 'constants/alerts';
+import { ENTITY_VERSION_V4 } from 'constants/app';
+import { PANEL_TYPES } from 'constants/queryBuilder';
+import { QBShortcuts } from 'constants/shortcuts/QBShortcuts';
+import { QueryBuilder } from 'container/QueryBuilder';
+import { useKeyboardHotkeys } from 'hooks/hotkeys/useKeyboardHotkeys';
+import { useIsDarkMode } from 'hooks/useDarkMode';
+import { Atom, Play, Terminal } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSelector } from 'react-redux';
+import { AppState } from 'store/reducers';
 import { AlertTypes } from 'types/api/alerts/alertTypes';
-import {
-	IChQueries,
-	IFormulaQueries,
-	IMetricQueries,
-	IPromQueries,
-} from 'types/api/alerts/compositeQuery';
-import { EAggregateOperator, EQueryType } from 'types/common/dashboard';
+import { AlertDef } from 'types/api/alerts/def';
+import { EQueryType } from 'types/common/dashboard';
+import AppReducer from 'types/reducer/app';
 
 import ChQuerySection from './ChQuerySection';
 import PromqlSection from './PromqlSection';
-import { FormContainer, QueryButton, StepHeading } from './styles';
-import { toIMetricsBuilderQuery } from './utils';
+import { FormContainer, StepHeading } from './styles';
 
-const { TabPane } = Tabs;
 function QuerySection({
 	queryCategory,
 	setQueryCategory,
-	metricQueries,
-	setMetricQueries,
-	formulaQueries,
-	setFormulaQueries,
-	promQueries,
-	setPromQueries,
-	chQueries,
-	setChQueries,
 	alertType,
 	runQuery,
+	alertDef,
+	panelType,
+	ruleId,
 }: QuerySectionProps): JSX.Element {
 	// init namespace for translations
 	const { t } = useTranslation('alerts');
+	const [currentTab, setCurrentTab] = useState(queryCategory);
 
-	const handleQueryCategoryChange = (s: string): void => {
-		if (
-			parseInt(s, 10) === EQueryType.PROM &&
-			(!promQueries || Object.keys(promQueries).length === 0)
-		) {
-			setPromQueries({
-				A: {
-					query: '',
-					stats: '',
-					name: 'A',
-					legend: '',
-					disabled: false,
-				},
-			});
-		}
+	const { featureResponse } = useSelector<AppState, AppReducer>(
+		(state) => state.app,
+	);
 
-		if (
-			parseInt(s, 10) === EQueryType.CLICKHOUSE &&
-			(!chQueries || Object.keys(chQueries).length === 0)
-		) {
-			setChQueries({
-				A: {
-					rawQuery: '',
-					name: 'A',
-					query: '',
-					legend: '',
-					disabled: false,
-				},
-			});
-		}
-		setQueryCategory(parseInt(s, 10));
+	const handleQueryCategoryChange = (queryType: string): void => {
+		featureResponse.refetch().then(() => {
+			setQueryCategory(queryType as EQueryType);
+		});
+		setCurrentTab(queryType as EQueryType);
 	};
 
-	const getNextQueryLabel = useCallback((): string => {
-		let maxAscii = 0;
+	const renderPromqlUI = (): JSX.Element => <PromqlSection />;
 
-		Object.keys(metricQueries).forEach((key) => {
-			const n = key.charCodeAt(0);
-			if (n > maxAscii) {
-				maxAscii = n - 64;
+	const renderChQueryUI = (): JSX.Element => <ChQuerySection />;
+
+	const isDarkMode = useIsDarkMode();
+
+	const renderMetricUI = (): JSX.Element => (
+		<QueryBuilder
+			panelType={panelType}
+			config={{
+				queryVariant: 'static',
+				initialDataSource: ALERTS_DATA_SOURCE_MAP[alertType],
+			}}
+			showFunctions={
+				(alertType === AlertTypes.METRICS_BASED_ALERT &&
+					alertDef.version === ENTITY_VERSION_V4) ||
+				alertType === AlertTypes.LOGS_BASED_ALERT
 			}
-		});
+			version={alertDef.version || 'v3'}
+		/>
+	);
 
-		return String.fromCharCode(64 + maxAscii + 1);
-	}, [metricQueries]);
+	const tabs = [
+		{
+			label: (
+				<Tooltip title="Query Builder">
+					<Button className="nav-btns">
+						<Atom size={14} />
+					</Button>
+				</Tooltip>
+			),
+			key: EQueryType.QUERY_BUILDER,
+		},
+		{
+			label: (
+				<Tooltip title="ClickHouse">
+					<Button className="nav-btns">
+						<Terminal size={14} />
+					</Button>
+				</Tooltip>
+			),
+			key: EQueryType.CLICKHOUSE,
+		},
+	];
 
-	const handleFormulaChange = ({
-		formulaIndex,
-		expression,
-		legend,
-		toggleDisable,
-		toggleDelete,
-	}: IQueryBuilderFormulaHandleChange): void => {
-		const allFormulas = formulaQueries;
-		const current = allFormulas[formulaIndex];
-		if (expression !== undefined) {
-			current.expression = expression;
-		}
-
-		if (legend !== undefined) {
-			current.legend = legend;
-		}
-
-		if (toggleDisable) {
-			current.disabled = !current.disabled;
-		}
-
-		if (toggleDelete) {
-			delete allFormulas[formulaIndex];
-		} else {
-			allFormulas[formulaIndex] = current;
-		}
-
-		setFormulaQueries({
-			...allFormulas,
-		});
-	};
-
-	const handleMetricQueryChange = ({
-		queryIndex,
-		aggregateFunction,
-		metricName,
-		tagFilters,
-		groupBy,
-		legend,
-		toggleDisable,
-		toggleDelete,
-	}: IQueryBuilderQueryHandleChange): void => {
-		const allQueries = metricQueries;
-		const current = metricQueries[queryIndex];
-		if (aggregateFunction) {
-			current.aggregateOperator = aggregateFunction;
-		}
-		if (metricName) {
-			current.metricName = metricName;
-		}
-
-		if (tagFilters && current.tagFilters) {
-			current.tagFilters.items = tagFilters;
-		}
-
-		if (legend) {
-			current.legend = legend;
-		}
-
-		if (groupBy) {
-			current.groupBy = groupBy;
-		}
-
-		if (toggleDisable) {
-			current.disabled = !current.disabled;
-		}
-
-		if (toggleDelete) {
-			delete allQueries[queryIndex];
-		} else {
-			allQueries[queryIndex] = current;
-		}
-
-		setMetricQueries({
-			...allQueries,
-		});
-	};
-
-	const addMetricQuery = useCallback(() => {
-		if (Object.keys(metricQueries).length > 5) {
-			notification.error({
-				message: t('metric_query_max_limit'),
-			});
-			return;
-		}
-
-		const queryLabel = getNextQueryLabel();
-
-		const queries = metricQueries;
-		queries[queryLabel] = {
-			name: queryLabel,
-			queryName: queryLabel,
-			metricName: '',
-			formulaOnly: false,
-			aggregateOperator: EAggregateOperator.NOOP,
-			legend: '',
-			tagFilters: {
-				op: 'AND',
-				items: [],
+	const items = useMemo(
+		() => [
+			{
+				label: (
+					<Tooltip title="Query Builder">
+						<Button className="nav-btns" data-testid="query-builder-tab">
+							<Atom size={14} />
+						</Button>
+					</Tooltip>
+				),
+				key: EQueryType.QUERY_BUILDER,
 			},
-			groupBy: [],
-			disabled: false,
-			expression: queryLabel,
-		};
-		setMetricQueries({ ...queries });
-	}, [t, getNextQueryLabel, metricQueries, setMetricQueries]);
-
-	const addFormula = useCallback(() => {
-		// defaulting to F1 as only one formula is supported
-		// in alert definition
-		const queryLabel = 'F1';
-
-		const formulas = formulaQueries;
-		formulas[queryLabel] = {
-			queryName: queryLabel,
-			name: queryLabel,
-			formulaOnly: true,
-			expression: 'A',
-			disabled: false,
-			legend: '',
-		};
-
-		setFormulaQueries({ ...formulas });
-	}, [formulaQueries, setFormulaQueries]);
-
-	const renderPromqlUI = (): JSX.Element => {
-		return (
-			<PromqlSection promQueries={promQueries} setPromQueries={setPromQueries} />
-		);
-	};
-
-	const renderChQueryUI = (): JSX.Element => {
-		return <ChQuerySection chQueries={chQueries} setChQueries={setChQueries} />;
-	};
-
-	const renderFormulaButton = (): JSX.Element => {
-		return (
-			<QueryButton onClick={addFormula} icon={<PlusOutlined />}>
-				{t('button_formula')}
-			</QueryButton>
-		);
-	};
-
-	const renderQueryButton = (): JSX.Element => {
-		return (
-			<QueryButton onClick={addMetricQuery} icon={<PlusOutlined />}>
-				{t('button_query')}
-			</QueryButton>
-		);
-	};
-
-	const renderMetricUI = (): JSX.Element => {
-		return (
-			<div>
-				{metricQueries &&
-					Object.keys(metricQueries).map((key: string) => {
-						// todo(amol): need to handle this in fetch
-						const current = metricQueries[key];
-						current.name = key;
-
-						return (
-							<MetricsBuilder
-								key={key}
-								queryIndex={key}
-								queryData={toIMetricsBuilderQuery(current)}
-								selectedGraph="TIME_SERIES"
-								handleQueryChange={handleMetricQueryChange}
+			{
+				label: (
+					<Tooltip title="ClickHouse">
+						<Button className="nav-btns">
+							<Terminal size={14} />
+						</Button>
+					</Tooltip>
+				),
+				key: EQueryType.CLICKHOUSE,
+			},
+			{
+				label: (
+					<Tooltip title="PromQL">
+						<Button className="nav-btns">
+							<PromQLIcon
+								fillColor={isDarkMode ? Color.BG_VANILLA_200 : Color.BG_INK_300}
 							/>
-						);
-					})}
+						</Button>
+					</Tooltip>
+				),
+				key: EQueryType.PROM,
+			},
+		],
+		[isDarkMode],
+	);
 
-				{queryCategory !== EQueryType.PROM && renderQueryButton()}
-				<div style={{ marginTop: '1rem' }}>
-					{formulaQueries &&
-						Object.keys(formulaQueries).map((key: string) => {
-							// todo(amol): need to handle this in fetch
-							const current = formulaQueries[key];
-							current.name = key;
+	const { registerShortcut, deregisterShortcut } = useKeyboardHotkeys();
 
-							return (
-								<MetricsBuilderFormula
-									key={key}
-									formulaIndex={key}
-									formulaData={current}
-									handleFormulaChange={handleFormulaChange}
-								/>
-							);
-						})}
-					{queryCategory === EQueryType.QUERY_BUILDER &&
-						(!formulaQueries || Object.keys(formulaQueries).length === 0) &&
-						metricQueries &&
-						Object.keys(metricQueries).length > 0 &&
-						renderFormulaButton()}
-				</div>
-			</div>
-		);
-	};
+	useEffect(() => {
+		registerShortcut(QBShortcuts.StageAndRunQuery, runQuery);
 
-	const handleRunQuery = (): void => {
-		runQuery();
-	};
+		return (): void => {
+			deregisterShortcut(QBShortcuts.StageAndRunQuery);
+		};
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [runQuery]);
 
 	const renderTabs = (typ: AlertTypes): JSX.Element | null => {
 		switch (typ) {
@@ -294,53 +149,62 @@ function QuerySection({
 			case AlertTypes.LOGS_BASED_ALERT:
 			case AlertTypes.EXCEPTIONS_BASED_ALERT:
 				return (
-					<Tabs
-						type="card"
-						style={{ width: '100%' }}
-						defaultActiveKey={EQueryType.CLICKHOUSE.toString()}
-						activeKey={queryCategory.toString()}
-						onChange={handleQueryCategoryChange}
-						tabBarExtraContent={
-							<span style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-								{queryCategory === EQueryType.CLICKHOUSE && (
-									<Button type="primary" onClick={handleRunQuery}>
-										Run Query
+					<div className="alert-tabs">
+						<Tabs
+							type="card"
+							style={{ width: '100%' }}
+							defaultActiveKey={currentTab}
+							activeKey={currentTab}
+							onChange={handleQueryCategoryChange}
+							tabBarExtraContent={
+								<span style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+									<Button
+										type="primary"
+										onClick={(): void => {
+											runQuery();
+											logEvent('Alert: Stage and run query', {
+												dataSource: ALERTS_DATA_SOURCE_MAP[alertType],
+												isNewRule: !ruleId || ruleId === 0,
+												ruleId,
+												queryType: queryCategory,
+											});
+										}}
+										className="stage-run-query"
+										icon={<Play size={14} />}
+									>
+										Stage & Run Query
 									</Button>
-								)}
-							</span>
-						}
-					>
-						<TabPane
-							tab={t('tab_qb')}
-							key={EQueryType.QUERY_BUILDER.toString()}
-							disabled
+								</span>
+							}
+							items={tabs}
 						/>
-						<TabPane tab={t('tab_chquery')} key={EQueryType.CLICKHOUSE.toString()} />
-					</Tabs>
+					</div>
 				);
 			case AlertTypes.METRICS_BASED_ALERT:
 			default:
 				return (
-					<Tabs
-						type="card"
-						style={{ width: '100%' }}
-						defaultActiveKey={EQueryType.QUERY_BUILDER.toString()}
-						activeKey={queryCategory.toString()}
-						onChange={handleQueryCategoryChange}
-						tabBarExtraContent={
-							<span style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-								{queryCategory === EQueryType.CLICKHOUSE && (
-									<Button type="primary" onClick={handleRunQuery}>
-										Run Query
+					<div className="alert-tabs">
+						<Tabs
+							type="card"
+							style={{ width: '100%' }}
+							defaultActiveKey={currentTab}
+							activeKey={currentTab}
+							onChange={handleQueryCategoryChange}
+							tabBarExtraContent={
+								<span style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+									<Button
+										type="primary"
+										onClick={runQuery}
+										className="stage-run-query"
+										icon={<Play size={14} />}
+									>
+										Stage & Run Query
 									</Button>
-								)}
-							</span>
-						}
-					>
-						<TabPane tab={t('tab_qb')} key={EQueryType.QUERY_BUILDER.toString()} />
-						<TabPane tab={t('tab_chquery')} key={EQueryType.CLICKHOUSE.toString()} />
-						<TabPane tab={t('tab_promql')} key={EQueryType.PROM.toString()} />
-					</Tabs>
+								</span>
+							}
+							items={items}
+						/>
+					</div>
 				);
 		}
 	};
@@ -358,10 +222,10 @@ function QuerySection({
 	};
 	return (
 		<>
-			<StepHeading> {t('alert_form_step1')}</StepHeading>
+			<StepHeading> {t('alert_form_step2')}</StepHeading>
 			<FormContainer>
-				<div style={{ display: 'flex' }}>{renderTabs(alertType)}</div>
-				{renderQuerySection(queryCategory)}
+				<div>{renderTabs(alertType)}</div>
+				{renderQuerySection(currentTab)}
 			</FormContainer>
 		</>
 	);
@@ -370,16 +234,11 @@ function QuerySection({
 interface QuerySectionProps {
 	queryCategory: EQueryType;
 	setQueryCategory: (n: EQueryType) => void;
-	metricQueries: IMetricQueries;
-	setMetricQueries: (b: IMetricQueries) => void;
-	formulaQueries: IFormulaQueries;
-	setFormulaQueries: (b: IFormulaQueries) => void;
-	promQueries: IPromQueries;
-	setPromQueries: (p: IPromQueries) => void;
-	chQueries: IChQueries;
-	setChQueries: (q: IChQueries) => void;
 	alertType: AlertTypes;
-	runQuery: () => void;
+	runQuery: VoidFunction;
+	alertDef: AlertDef;
+	panelType: PANEL_TYPES;
+	ruleId: number;
 }
 
 export default QuerySection;

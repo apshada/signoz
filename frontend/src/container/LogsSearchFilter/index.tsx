@@ -1,17 +1,13 @@
 import { Input, InputRef, Popover } from 'antd';
 import useUrlQuery from 'hooks/useUrlQuery';
 import getStep from 'lib/getStep';
-import { debounce } from 'lodash-es';
-import React, {
-	useCallback,
-	useEffect,
-	useMemo,
-	useRef,
-	useState,
-} from 'react';
+import debounce from 'lodash-es/debounce';
+import { getIdConditions } from 'pages/Logs/utils';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { connect, useDispatch, useSelector } from 'react-redux';
 import { bindActionCreators, Dispatch } from 'redux';
 import { ThunkDispatch } from 'redux-thunk';
+import { GetLogsFields } from 'store/actions/logs/getFields';
 import { getLogs } from 'store/actions/logs/getLogs';
 import { getLogsAggregate } from 'store/actions/logs/getLogsAggregate';
 import { AppState } from 'store/reducers';
@@ -24,6 +20,7 @@ import {
 } from 'types/actions/logs';
 import { GlobalReducer } from 'types/reducer/globalTime';
 import { ILogsReducer } from 'types/reducer/logs';
+import { popupContainer } from 'utils/selectPopupContainer';
 
 import SearchFields from './SearchFields';
 import { Container, DropDownContainer } from './styles';
@@ -32,20 +29,18 @@ import { useSearchParser } from './useSearchParser';
 function SearchFilter({
 	getLogs,
 	getLogsAggregate,
+	getLogsFields,
 }: SearchFilterProps): JSX.Element {
-	const {
-		updateParsedQuery,
-		updateQueryString,
-		queryString,
-	} = useSearchParser();
+	const { updateQueryString, queryString } = useSearchParser();
 	const [searchText, setSearchText] = useState(queryString);
 	const [showDropDown, setShowDropDown] = useState(false);
 	const searchRef = useRef<InputRef>(null);
-	const { logLinesPerPage, idEnd, idStart, liveTail } = useSelector<
+	const { logLinesPerPage, idEnd, idStart, liveTail, order } = useSelector<
 		AppState,
 		ILogsReducer
 	>((state) => state.logs);
-	const { maxTime, minTime } = useSelector<AppState, GlobalReducer>(
+
+	const globalTime = useSelector<AppState, GlobalReducer>(
 		(state) => state.globalTime,
 	);
 	const dispatch = useDispatch<Dispatch<AppActions>>();
@@ -68,7 +63,10 @@ function SearchFilter({
 	);
 
 	const handleSearch = useCallback(
-		(customQuery) => {
+		(customQuery: string) => {
+			getLogsFields();
+			const { maxTime, minTime } = globalTime;
+
 			if (liveTail === 'PLAYING') {
 				dispatch({
 					type: TOGGLE_LIVE_TAIL,
@@ -77,24 +75,36 @@ function SearchFilter({
 				dispatch({
 					type: FLUSH_LOGS,
 				});
-				setTimeout(
-					() =>
-						dispatch({
-							type: TOGGLE_LIVE_TAIL,
-							payload: liveTail,
-						}),
-					0,
-				);
+				dispatch({
+					type: TOGGLE_LIVE_TAIL,
+					payload: liveTail,
+				});
+				dispatch({
+					type: SET_LOADING,
+					payload: false,
+				});
+
+				getLogsAggregate({
+					timestampStart: minTime,
+					timestampEnd: maxTime,
+					step: getStep({
+						start: minTime,
+						end: maxTime,
+						inputFormat: 'ns',
+					}),
+					q: customQuery,
+					...(idStart ? { idGt: idStart } : {}),
+					...(idEnd ? { idLt: idEnd } : {}),
+				});
 			} else {
 				getLogs({
 					q: customQuery,
 					limit: logLinesPerPage,
 					orderBy: 'timestamp',
-					order: 'desc',
+					order,
 					timestampStart: minTime,
 					timestampEnd: maxTime,
-					...(idStart ? { idGt: idStart } : {}),
-					...(idEnd ? { idLt: idEnd } : {}),
+					...getIdConditions(idStart, idEnd, order),
 				});
 
 				getLogsAggregate({
@@ -117,8 +127,9 @@ function SearchFilter({
 			idStart,
 			liveTail,
 			logLinesPerPage,
-			maxTime,
-			minTime,
+			globalTime,
+			getLogsFields,
+			order,
 		],
 	);
 
@@ -145,23 +156,32 @@ function SearchFilter({
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [
 		urlQueryString,
-		maxTime,
-		minTime,
 		idEnd,
 		idStart,
 		logLinesPerPage,
 		dispatch,
+		globalTime.maxTime,
+		globalTime.minTime,
+		order,
 	]);
+
+	const onPopOverChange = useCallback(
+		(isVisible: boolean) => {
+			onDropDownToggleHandler(isVisible)();
+		},
+		[onDropDownToggleHandler],
+	);
 
 	return (
 		<Container>
 			<Popover
+				getPopupContainer={popupContainer}
 				placement="bottom"
 				content={
 					<DropDownContainer>
 						<SearchFields
+							updateQueryString={updateQueryString}
 							onDropDownToggleHandler={onDropDownToggleHandler}
-							updateParsedQuery={updateParsedQuery as never}
 						/>
 					</DropDownContainer>
 				}
@@ -169,11 +189,9 @@ function SearchFilter({
 				overlayInnerStyle={{
 					width: `${searchRef?.current?.input?.offsetWidth || 0}px`,
 				}}
-				visible={showDropDown}
+				open={showDropDown}
 				destroyTooltipOnHide
-				onVisibleChange={(value): void => {
-					onDropDownToggleHandler(value)();
-				}}
+				onOpenChange={onPopOverChange}
 			>
 				<Input.Search
 					ref={searchRef}
@@ -182,8 +200,8 @@ function SearchFilter({
 					onChange={(e): void => {
 						const { value } = e.target;
 						setSearchText(value);
-						debouncedupdateQueryString(value);
 					}}
+					onSearch={debouncedupdateQueryString}
 					allowClear
 				/>
 			</Popover>
@@ -194,6 +212,7 @@ function SearchFilter({
 interface DispatchProps {
 	getLogs: typeof getLogs;
 	getLogsAggregate: typeof getLogsAggregate;
+	getLogsFields: typeof GetLogsFields;
 }
 
 type SearchFilterProps = DispatchProps;
@@ -203,6 +222,7 @@ const mapDispatchToProps = (
 ): DispatchProps => ({
 	getLogs: bindActionCreators(getLogs, dispatch),
 	getLogsAggregate: bindActionCreators(getLogsAggregate, dispatch),
+	getLogsFields: bindActionCreators(GetLogsFields, dispatch),
 });
 
-export default connect(null, mapDispatchToProps)(SearchFilter);
+export default connect(null, mapDispatchToProps)(memo(SearchFilter));

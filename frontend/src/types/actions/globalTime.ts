@@ -1,4 +1,10 @@
 import { Time } from 'container/TopNav/DateTimeSelection/config';
+import {
+	CustomTimeType,
+	Time as TimeV2,
+} from 'container/TopNav/DateTimeSelectionV2/config';
+
+import { ResetIdStartAndEnd, SetSearchQueryString } from './logs';
 
 export const UPDATE_TIME_INTERVAL = 'UPDATE_TIME_INTERVAL';
 export const GLOBAL_TIME_LOADING_START = 'GLOBAL_TIME_LOADING_START';
@@ -11,7 +17,7 @@ export type GlobalTime = {
 };
 
 interface UpdateTime extends GlobalTime {
-	selectedTime: Time;
+	selectedTime: Time | TimeV2 | CustomTimeType;
 }
 
 interface UpdateTimeInterval {
@@ -37,4 +43,6 @@ export type GlobalTimeAction =
 	| UpdateTimeInterval
 	| GlobalTimeLoading
 	| UpdateAutoRefreshDisabled
-	| UpdateAutoRefreshInterval;
+	| UpdateAutoRefreshInterval
+	| ResetIdStartAndEnd
+	| SetSearchQueryString;

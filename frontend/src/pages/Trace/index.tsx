@@ -1,13 +1,17 @@
+import * as Sentry from '@sentry/react';
 import { Card } from 'antd';
+import { NotificationInstance } from 'antd/es/notification/interface';
 import ROUTES from 'constants/routes';
 import Filters from 'container/Trace/Filters';
 import TraceGraph from 'container/Trace/Graph';
 import Search from 'container/Trace/Search';
 import TraceGraphFilter from 'container/Trace/TraceGraphFilter';
 import TraceTable from 'container/Trace/TraceTable';
+import { useNotifications } from 'hooks/useNotifications';
 import getStep from 'lib/getStep';
 import history from 'lib/history';
-import React, { useCallback, useEffect, useState } from 'react';
+import ErrorBoundaryFallback from 'pages/ErrorBoundaryFallback/ErrorBoundaryFallback';
+import { MouseEventHandler, useCallback, useEffect, useState } from 'react';
 import { connect, useDispatch, useSelector } from 'react-redux';
 import { bindActionCreators, Dispatch } from 'redux';
 import { ThunkDispatch } from 'redux-thunk';
@@ -50,23 +54,30 @@ function Trace({
 		selectedFunction,
 		selectedGroupBy,
 		isFilterExclude,
+		spanKind,
 	} = useSelector<AppState, TraceReducer>((state) => state.traces);
 
-	useEffect(() => {
-		getInitialFilter(minTime, maxTime);
-	}, [maxTime, minTime, getInitialFilter, isChanged]);
+	const { notifications } = useNotifications();
 
 	useEffect(() => {
-		getSpansAggregate({
-			maxTime,
-			minTime,
-			selectedFilter,
-			current: spansAggregate.currentPage,
-			pageSize: spansAggregate.pageSize,
-			selectedTags,
-			order: spansAggregate.order,
-			orderParam: spansAggregate.orderParam,
-		});
+		getInitialFilter(minTime, maxTime, notifications);
+	}, [maxTime, minTime, getInitialFilter, isChanged, notifications]);
+
+	useEffect(() => {
+		getSpansAggregate(
+			{
+				maxTime,
+				minTime,
+				selectedFilter,
+				current: spansAggregate.currentPage,
+				pageSize: spansAggregate.pageSize,
+				selectedTags,
+				order: spansAggregate.order,
+				orderParam: spansAggregate.orderParam,
+				spanKind,
+			},
+			notifications,
+		);
 	}, [
 		selectedTags,
 		selectedFilter,
@@ -77,19 +88,25 @@ function Trace({
 		spansAggregate.pageSize,
 		spansAggregate.order,
 		spansAggregate.orderParam,
+		notifications,
+		spanKind,
 	]);
 
 	useEffect(() => {
-		getSpans({
-			end: maxTime,
-			function: selectedFunction,
-			groupBy: selectedGroupBy,
-			selectedFilter,
-			selectedTags,
-			start: minTime,
-			step: getStep({ start: minTime, end: maxTime, inputFormat: 'ns' }),
-			isFilterExclude,
-		});
+		getSpans(
+			{
+				end: maxTime,
+				function: selectedFunction,
+				groupBy: selectedGroupBy,
+				selectedFilter,
+				selectedTags,
+				start: minTime,
+				step: getStep({ start: minTime, end: maxTime, inputFormat: 'ns' }),
+				isFilterExclude,
+				spanKind,
+			},
+			notifications,
+		);
 	}, [
 		selectedFunction,
 		selectedGroupBy,
@@ -99,17 +116,20 @@ function Trace({
 		minTime,
 		getSpans,
 		isFilterExclude,
+		notifications,
+		spanKind,
 	]);
 
-	useEffect(() => {
-		return (): void => {
+	useEffect(
+		() => (): void => {
 			dispatch({
 				type: RESET_TRACE_FILTER,
 			});
-		};
-	}, [dispatch]);
+		},
+		[dispatch],
+	);
 
-	const onClickHandler = useCallback(
+	const onClickHandler: MouseEventHandler<HTMLElement> = useCallback(
 		(e) => {
 			e.preventDefault();
 			e.stopPropagation();
@@ -126,7 +146,7 @@ function Trace({
 	);
 
 	return (
-		<>
+		<Sentry.ErrorBoundary fallback={<ErrorBoundaryFallback />}>
 			<Search />
 			<Container>
 				<div>
@@ -149,16 +169,20 @@ function Trace({
 					</Card>
 				</RightContainer>
 			</Container>
-		</>
+		</Sentry.ErrorBoundary>
 	);
 }
 
 interface DispatchProps {
-	getSpansAggregate: (props: GetSpansAggregateProps) => void;
-	getSpans: (props: GetSpansProps) => void;
+	getSpansAggregate: (
+		props: GetSpansAggregateProps,
+		notify: NotificationInstance,
+	) => void;
+	getSpans: (props: GetSpansProps, notify: NotificationInstance) => void;
 	getInitialFilter: (
 		minTime: GlobalReducer['minTime'],
 		maxTime: GlobalReducer['maxTime'],
+		notify: NotificationInstance,
 	) => void;
 }
 

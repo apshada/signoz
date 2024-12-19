@@ -33,6 +33,7 @@ export interface TraceReducer {
 	};
 	yAxisUnit: string | undefined;
 	filterDisplayValue: Map<TraceFilterEnum, number>;
+	spanKind?: string;
 }
 
 interface SpansAggregateData {
@@ -47,22 +48,31 @@ interface SpansAggregateData {
 }
 
 export interface Tags {
-	Key: string[];
-	Operator: OperatorValues;
-	Values: string[];
-}
-
-export interface TagsAPI {
 	Key: string;
 	Operator: OperatorValues;
-	Values: string[];
+	StringValues: string[];
+	NumberValues: number[];
+	BoolValues: boolean[];
 }
-export type OperatorValues = 'not in' | 'in';
+
+export type OperatorValues =
+	| 'NotIn'
+	| 'In'
+	| 'Equals'
+	| 'NotEquals'
+	| 'Contains'
+	| 'NotContains'
+	| 'GreaterThan'
+	| 'Exists'
+	| 'NotExists'
+	| 'LessThan'
+	| 'GreaterThanEquals'
+	| 'LessThanEquals'
+	| 'StartsWith'
+	| 'NotStartsWith';
 
 export type TraceFilterEnum =
-	| 'component'
 	| 'duration'
-	| 'httpCode'
 	| 'httpHost'
 	| 'httpMethod'
 	| 'httpRoute'
@@ -79,16 +89,8 @@ export const AllPanelHeading: {
 	displayValue: string;
 }[] = [
 	{
-		displayValue: 'Component',
-		key: 'component',
-	},
-	{
 		key: 'duration',
 		displayValue: 'Duration',
-	},
-	{
-		displayValue: 'HTTP Code',
-		key: 'httpCode',
 	},
 	{
 		key: 'httpHost',

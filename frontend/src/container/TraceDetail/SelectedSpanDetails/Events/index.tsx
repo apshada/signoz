@@ -1,5 +1,4 @@
 import { Typography } from 'antd';
-import React from 'react';
 import { ITraceEvents } from 'types/api/trace/getTraceItem';
 
 import ErrorTag from './Event';
@@ -14,11 +13,18 @@ function Events({
 		return <Typography>No events data in selected span</Typography>;
 	}
 
+	const sortedTraceEvents = events.sort((a, b) => {
+		// Handle undefined names by treating them as empty strings
+		const nameA = a.name || '';
+		const nameB = b.name || '';
+		return nameA.localeCompare(nameB);
+	});
+
 	return (
 		<ErrorTag
 			onToggleHandler={onToggleHandler}
 			setText={setText}
-			event={events}
+			event={sortedTraceEvents}
 			firstSpanStartTime={firstSpanStartTime}
 		/>
 	);

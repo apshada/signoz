@@ -1,26 +1,8 @@
-import {
-	Button,
-	Card,
-	Col,
-	Form,
-	Input,
-	InputNumber,
-	Row,
-	Select,
-	Typography,
-} from 'antd';
-import FormItem from 'antd/lib/form/FormItem';
-import TextArea from 'antd/lib/input/TextArea';
+import { Button, Card, Col, Form, Input, Select, Typography } from 'antd';
 import styled from 'styled-components';
 
-export const PanelContainer = styled(Row)`
-	flex-wrap: nowrap;
-`;
-
-export const StyledRightContainer = styled(Col)`
-	&&& {
-	}
-`;
+const { TextArea } = Input;
+const { Item } = Form;
 
 export const StyledLeftContainer = styled(Col)`
 	&&& {
@@ -73,12 +55,19 @@ export const StepHeading = styled.p`
 export const InlineSelect = styled(Select)`
 	display: inline-block;
 	width: 10% !important;
-	margin-left: 0.2em;
-	margin-right: 0.2em;
+	margin-left: 0.3em;
+	margin-right: 0.3em;
 `;
 
 export const SeveritySelect = styled(Select)`
 	width: 25% !important;
+`;
+
+export const VerticalLine = styled.div`
+	border-left: 2px solid #e8e8e8; /* Adjust color and thickness as desired */
+	padding-left: 20px; /* Adjust spacing to content as needed */
+	margin-left: 20px; /* Adjust margin as desired */
+	height: 100%; /* Adjust based on your layout needs */
 `;
 
 export const InputSmall = styled(Input)`
@@ -86,24 +75,13 @@ export const InputSmall = styled(Input)`
 `;
 
 export const FormContainer = styled(Card)`
-	padding: 2em;
 	margin-top: 1rem;
 	display: flex;
 	flex-direction: column;
 	border-radius: 4px;
-`;
 
-export const ThresholdInput = styled(InputNumber)`
-	& > div {
-		display: flex;
-		align-items: center;
-		& > .ant-input-number-group-addon {
-			width: 130px;
-		}
-		& > .ant-input-number {
-			width: 50%;
-			margin-left: 1em;
-		}
+	.ant-card-body {
+		padding: 12px;
 	}
 `;
 
@@ -111,10 +89,14 @@ export const TextareaMedium = styled(TextArea)`
 	width: 70%;
 `;
 
-export const FormItemMedium = styled(FormItem)`
+export const FormItemMedium = styled(Item)`
 	width: 70%;
 `;
 
 export const ChannelSelectTip = styled(Typography.Text)`
 	color: hsla(0, 0%, 100%, 0.3);
+`;
+
+export const StepContainer = styled.div`
+	margin-top: 2rem;
 `;

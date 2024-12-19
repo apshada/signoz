@@ -1,20 +1,23 @@
-import React from 'react';
+import { PANEL_TYPES } from 'constants/queryBuilder';
+import { Spline } from 'lucide-react';
 import { EQueryType } from 'types/common/dashboard';
 
 import QueryTypeTag from '../QueryTypeTag';
 
 interface IPlotTagProps {
 	queryType: EQueryType;
+	panelType: PANEL_TYPES;
 }
 
-function PlotTag({ queryType }: IPlotTagProps): JSX.Element | null {
-	if (queryType === undefined) {
+function PlotTag({ queryType, panelType }: IPlotTagProps): JSX.Element | null {
+	if (queryType === undefined || panelType === PANEL_TYPES.LIST) {
 		return null;
 	}
 
 	return (
-		<div style={{ marginLeft: '2rem', position: 'absolute', top: '1rem' }}>
-			Plotted using <QueryTypeTag queryType={queryType} />
+		<div className="plot-tag">
+			<Spline size={14} />
+			Plotted with <QueryTypeTag queryType={queryType} />
 		</div>
 	);
 }

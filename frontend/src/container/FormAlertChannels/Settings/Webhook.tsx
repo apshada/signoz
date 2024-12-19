@@ -1,6 +1,5 @@
-import { Input } from 'antd';
-import FormItem from 'antd/lib/form/FormItem';
-import React from 'react';
+import { Form, Input } from 'antd';
+import { Dispatch, SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { WebhookChannel } from '../../CreateAlertChannels/config';
@@ -10,7 +9,7 @@ function WebhookSettings({ setSelectedConfig }: WebhookProps): JSX.Element {
 
 	return (
 		<>
-			<FormItem name="api_url" label={t('field_webhook_url')}>
+			<Form.Item name="api_url" label={t('field_webhook_url')}>
 				<Input
 					onChange={(event): void => {
 						setSelectedConfig((value) => ({
@@ -18,9 +17,10 @@ function WebhookSettings({ setSelectedConfig }: WebhookProps): JSX.Element {
 							api_url: event.target.value,
 						}));
 					}}
+					data-testid="webhook-url-textbox"
 				/>
-			</FormItem>
-			<FormItem
+			</Form.Item>
+			<Form.Item
 				name="username"
 				label={t('field_webhook_username')}
 				help={t('help_webhook_username')}
@@ -32,9 +32,10 @@ function WebhookSettings({ setSelectedConfig }: WebhookProps): JSX.Element {
 							username: event.target.value,
 						}));
 					}}
+					data-testid="webhook-username-textbox"
 				/>
-			</FormItem>
-			<FormItem
+			</Form.Item>
+			<Form.Item
 				name="password"
 				label="Password (optional)"
 				help={t('help_webhook_password')}
@@ -47,16 +48,15 @@ function WebhookSettings({ setSelectedConfig }: WebhookProps): JSX.Element {
 							password: event.target.value,
 						}));
 					}}
+					data-testid="webhook-password-textbox"
 				/>
-			</FormItem>
+			</Form.Item>
 		</>
 	);
 }
 
 interface WebhookProps {
-	setSelectedConfig: React.Dispatch<
-		React.SetStateAction<Partial<WebhookChannel>>
-	>;
+	setSelectedConfig: Dispatch<SetStateAction<Partial<WebhookChannel>>>;
 }
 
 export default WebhookSettings;

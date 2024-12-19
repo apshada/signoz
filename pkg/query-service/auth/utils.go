@@ -1,9 +1,6 @@
 package auth
 
 import (
-	"crypto/rand"
-	"encoding/hex"
-
 	"github.com/pkg/errors"
 	"go.signoz.io/signoz/pkg/query-service/constants"
 	"go.signoz.io/signoz/pkg/query-service/model"
@@ -15,23 +12,13 @@ var (
 	ErrorInvalidRole  = errors.New("Invalid role")
 
 	ErrorInvalidInviteToken = errors.New("Invalid invite token")
-	ErrorAskAdmin           = errors.New("You are not allowed to create an account. Please ask your admin to send an invite link")
+	ErrorAskAdmin           = errors.New("An invitation is needed to create an account. Please ask your admin (the person who has first installed SIgNoz) to send an invite.")
 )
-
-func randomHex(sz int) (string, error) {
-	bytes := make([]byte, sz)
-	if _, err := rand.Read(bytes); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(bytes), nil
-}
 
 func isValidRole(role string) bool {
 	switch role {
 	case constants.AdminGroup, constants.EditorGroup, constants.ViewerGroup:
 		return true
-	default:
-		return false
 	}
 	return false
 }

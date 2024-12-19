@@ -1,22 +1,30 @@
-import { Button, Divider, notification, Space, Table, Typography } from 'antd';
+import './styles.scss';
+
+import { Button, Divider, Space, Typography } from 'antd';
+import logEvent from 'api/common/logEvent';
 import getNextPrevId from 'api/errors/getNextPrevId';
 import Editor from 'components/Editor';
+import { ResizeTable } from 'components/ResizeTable';
 import { getNanoSeconds } from 'container/AllError/utils';
-import dayjs from 'dayjs';
+import { useNotifications } from 'hooks/useNotifications';
+import createQueryParams from 'lib/createQueryParams';
 import history from 'lib/history';
+import { isUndefined } from 'lodash-es';
 import { urlKey } from 'pages/ErrorDetails/utils';
-import React, { useMemo, useState } from 'react';
+import { useTimezone } from 'providers/Timezone';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from 'react-query';
 import { useLocation } from 'react-router-dom';
 import { PayloadProps as GetByErrorTypeAndServicePayload } from 'types/api/errors/getByErrorTypeAndService';
 
+import { keyToExclude } from './config';
 import { DashedContainer, EditorContainer, EventContainer } from './styles';
 
 function ErrorDetails(props: ErrorDetailsProps): JSX.Element {
 	const { idPayload } = props;
 	const { t } = useTranslation(['errorDetails', 'common']);
-	const { search } = useLocation();
+	const { search, pathname } = useLocation();
 
 	const params = useMemo(() => new URLSearchParams(search), [search]);
 
@@ -53,29 +61,21 @@ function ErrorDetails(props: ErrorDetailsProps): JSX.Element {
 		() => [
 			{
 				title: 'Key',
+				width: 100,
 				dataIndex: 'key',
 				key: 'key',
 			},
 			{
 				title: 'Value',
 				dataIndex: 'value',
+				width: 100,
 				key: 'value',
 			},
 		],
 		[],
 	);
 
-	const keyToExclude = useMemo(
-		() => [
-			'exceptionStacktrace',
-			'exceptionType',
-			'errorId',
-			'timestamp',
-			'exceptionMessage',
-			'exceptionEscaped',
-		],
-		[],
-	);
+	const { notifications } = useNotifications();
 
 	const onClickErrorIdHandler = async (
 		id: string,
@@ -83,25 +83,25 @@ function ErrorDetails(props: ErrorDetailsProps): JSX.Element {
 	): Promise<void> => {
 		try {
 			if (id.length === 0) {
-				notification.error({
+				notifications.error({
 					message: 'Error Id cannot be empty',
 				});
 				return;
 			}
 
-			history.replace(
-				`${history.location.pathname}?&groupId=${
-					idPayload.groupID
-				}&timestamp=${getNanoSeconds(timestamp)}&errorId=${id}`,
-			);
+			const queryParams = {
+				groupId: idPayload.groupID,
+				timestamp: getNanoSeconds(timestamp),
+				errorId: id,
+			};
+
+			history.replace(`${pathname}?${createQueryParams(queryParams)}`);
 		} catch (error) {
-			notification.error({
+			notifications.error({
 				message: t('something_went_wrong'),
 			});
 		}
 	};
-
-	const timeStamp = dayjs(errorDetail.timestamp);
 
 	const data: { key: string; value: string }[] = Object.keys(errorDetail)
 		.filter((e) => !keyToExclude.includes(e))
@@ -111,8 +111,30 @@ function ErrorDetails(props: ErrorDetailsProps): JSX.Element {
 		}));
 
 	const onClickTraceHandler = (): void => {
+		logEvent('Exception: Navigate to trace detail page', {
+			groupId: errorDetail?.groupID,
+			spanId: errorDetail.spanID,
+			traceId: errorDetail.traceID,
+			exceptionId: errorDetail?.errorId,
+		});
 		history.push(`/trace/${errorDetail.traceID}?spanId=${errorDetail.spanID}`);
 	};
+
+	const logEventCalledRef = useRef(false);
+	useEffect(() => {
+		if (!logEventCalledRef.current && !isUndefined(data)) {
+			logEvent('Exception: Detail page visited', {
+				groupId: errorDetail?.groupID,
+				spanId: errorDetail.spanID,
+				traceId: errorDetail.traceID,
+				exceptionId: errorDetail?.errorId,
+			});
+			logEventCalledRef.current = true;
+		}
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [data]);
+
+	const { formatTimezoneAdjustedTimestamp } = useTimezone();
 
 	return (
 		<>
@@ -123,7 +145,12 @@ function ErrorDetails(props: ErrorDetailsProps): JSX.Element {
 			<EventContainer>
 				<div>
 					<Typography>Event {errorDetail.errorId}</Typography>
-					<Typography>{timeStamp.format('MMM DD YYYY hh:mm:ss A')}</Typography>
+					<Typography>
+						{formatTimezoneAdjustedTimestamp(
+							errorDetail.timestamp,
+							'DD/MM/YYYY hh:mm:ss A (UTC Z)',
+						)}
+					</Typography>
 				</div>
 				<div>
 					<Space align="end" direction="horizontal">
@@ -163,11 +190,13 @@ function ErrorDetails(props: ErrorDetailsProps): JSX.Element {
 			</DashedContainer>
 
 			<Typography.Title level={4}>{t('stack_trace')}</Typography.Title>
-			<Editor onChange={(): void => {}} value={stackTraceValue} readOnly />
+			<div className="error-container">
+				<Editor value={stackTraceValue} readOnly />
+			</div>
 
 			<EditorContainer>
 				<Space direction="vertical">
-					<Table tableLayout="fixed" columns={columns} dataSource={data} />
+					<ResizeTable columns={columns} tableLayout="fixed" dataSource={data} />
 				</Space>
 			</EditorContainer>
 		</>

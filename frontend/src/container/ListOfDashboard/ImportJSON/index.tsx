@@ -1,28 +1,33 @@
+import './importJSON.styles.scss';
+
 import { red } from '@ant-design/colors';
 import { ExclamationCircleTwoTone } from '@ant-design/icons';
+import MEditor, { Monaco } from '@monaco-editor/react';
+import { Color } from '@signozhq/design-tokens';
 import {
 	Button,
+	Flex,
 	Modal,
-	notification,
 	Space,
 	Typography,
 	Upload,
 	UploadProps,
 } from 'antd';
+import logEvent from 'api/common/logEvent';
 import createDashboard from 'api/dashboard/create';
-import Editor from 'components/Editor';
 import ROUTES from 'constants/routes';
+import { useIsDarkMode } from 'hooks/useDarkMode';
+import { MESSAGE } from 'hooks/useFeatureFlag';
+import { useNotifications } from 'hooks/useNotifications';
+import { getUpdatedLayout } from 'lib/dashboard/getUpdatedLayout';
 import history from 'lib/history';
-import React, { useState } from 'react';
+import { ExternalLink, Github, MonitorDot, MoveRight, X } from 'lucide-react';
+// #TODO: Lucide will be removing brand icons like GitHub in the future. In that case, we can use Simple Icons. https://simpleicons.org/
+// See more: https://github.com/lucide-icons/lucide/issues/94
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useDispatch } from 'react-redux';
 import { generatePath } from 'react-router-dom';
-import { Dispatch } from 'redux';
-import AppActions from 'types/actions';
-import { FLUSH_DASHBOARD } from 'types/actions/dashboard';
 import { DashboardData } from 'types/api/dashboard/getAll';
-
-import { EditorContainer, FooterContainer } from './styles';
 
 function ImportJSON({
 	isImportJSONModalVisible,
@@ -35,11 +40,13 @@ function ImportJSON({
 	const [isCreateDashboardError, setIsCreateDashboardError] = useState<boolean>(
 		false,
 	);
-	const dispatch = useDispatch<Dispatch<AppActions>>();
+	const [isFeatureAlert, setIsFeatureAlert] = useState<boolean>(false);
 
 	const [dashboardCreating, setDashboardCreating] = useState<boolean>(false);
 
 	const [editorValue, setEditorValue] = useState<string>('');
+
+	const { notifications } = useNotifications();
 
 	const onChangeHandler: UploadProps['onChange'] = (info) => {
 		const { fileList } = info;
@@ -71,42 +78,48 @@ function ImportJSON({
 	const onClickLoadJsonHandler = async (): Promise<void> => {
 		try {
 			setDashboardCreating(true);
+			logEvent('Dashboard List: Import and next clicked', {});
+
 			const dashboardData = JSON.parse(editorValue) as DashboardData;
 
-			// removing the queryData
-			const parsedWidgets: DashboardData = {
-				...dashboardData,
-				widgets: dashboardData.widgets?.map((e) => ({
-					...e,
-					queryData: {
-						...e.queryData,
-						data: e.queryData.data,
-						error: false,
-						errorMessage: '',
-						loading: false,
-					},
-				})),
-			};
+			// Remove uuid from the dashboard data, in all cases - empty, duplicate or any valid not duplicate uuid
+			if (dashboardData.uuid !== undefined) {
+				delete dashboardData.uuid;
+			}
+
+			if (dashboardData?.layout) {
+				dashboardData.layout = getUpdatedLayout(dashboardData.layout);
+			} else {
+				dashboardData.layout = [];
+			}
 
 			const response = await createDashboard({
-				...parsedWidgets,
+				...dashboardData,
 				uploadedGrafana,
 			});
 
 			if (response.statusCode === 200) {
-				dispatch({
-					type: FLUSH_DASHBOARD,
+				history.push(
+					generatePath(ROUTES.DASHBOARD, {
+						dashboardId: response.payload.uuid,
+					}),
+				);
+				logEvent('Dashboard List: New dashboard imported successfully', {
+					dashboardId: response.payload?.uuid,
+					dashboardName: response.payload?.data?.title,
 				});
-				setTimeout(() => {
-					history.push(
-						generatePath(ROUTES.DASHBOARD, {
-							dashboardId: response.payload.uuid,
+			} else if (response.error === 'feature usage exceeded') {
+				setIsFeatureAlert(true);
+				notifications.error({
+					message:
+						response.error ||
+						t('something_went_wrong', {
+							ns: 'common',
 						}),
-					);
-				}, 10);
+				});
 			} else {
 				setIsCreateDashboardError(true);
-				notification.error({
+				notifications.error({
 					message:
 						response.error ||
 						t('something_went_wrong', {
@@ -115,10 +128,14 @@ function ImportJSON({
 				});
 			}
 			setDashboardCreating(false);
-		} catch {
+		} catch (error) {
 			setDashboardCreating(false);
+			setIsFeatureAlert(false);
 
 			setIsCreateDashboardError(true);
+			notifications.error({
+				message: error instanceof Error ? error.message : t('error_loading_json'),
+			});
 		}
 	};
 
@@ -129,57 +146,140 @@ function ImportJSON({
 		</Space>
 	);
 
+	const onCancelHandler = (): void => {
+		setIsUploadJSONError(false);
+		setIsCreateDashboardError(false);
+		setIsFeatureAlert(false);
+		onModalHandler();
+	};
+
+	const isDarkMode = useIsDarkMode();
+
+	function setEditorTheme(monaco: Monaco): void {
+		monaco.editor.defineTheme('my-theme', {
+			base: 'vs-dark',
+			inherit: true,
+			rules: [
+				{ token: 'string.key.json', foreground: Color.BG_VANILLA_400 },
+				{ token: 'string.value.json', foreground: Color.BG_ROBIN_400 },
+			],
+			colors: {
+				'editor.background': Color.BG_INK_300,
+			},
+		});
+	}
+
 	return (
 		<Modal
-			visible={isImportJSONModalVisible}
+			wrapClassName="import-json-modal"
+			open={isImportJSONModalVisible}
 			centered
-			maskClosable
+			closable={false}
 			destroyOnClose
-			width="70vw"
-			onCancel={onModalHandler}
-			title={
-				<>
-					<Typography.Title level={4}>{t('import_json')}</Typography.Title>
-					<Typography>{t('import_dashboard_by_pasting')}</Typography>
-				</>
-			}
+			width="60vw"
 			footer={
-				<FooterContainer>
-					<Button
-						disabled={editorValue.length === 0}
-						onClick={onClickLoadJsonHandler}
-						loading={dashboardCreating}
-					>
-						{t('load_json')}
-					</Button>
-					{isCreateDashboardError && getErrorNode(t('error_loading_json'))}
-				</FooterContainer>
+				<div className="import-json-modal-footer">
+					{isCreateDashboardError && (
+						<div className="create-dashboard-json-error">
+							{getErrorNode(t('error_loading_json'))}
+						</div>
+					)}
+
+					{isUploadJSONError && (
+						<div className="create-dashboard-json-error">
+							{getErrorNode(t('error_upload_json'))}
+						</div>
+					)}
+
+					<div className="action-btns-container">
+						<Flex gap="small">
+							<Upload
+								accept=".json"
+								showUploadList={false}
+								multiple={false}
+								onChange={onChangeHandler}
+								beforeUpload={(): boolean => false}
+								action="none"
+								data={jsonData}
+							>
+								<Button
+									type="default"
+									className="periscope-btn"
+									icon={<MonitorDot size={14} />}
+									onClick={(): void => {
+										logEvent('Dashboard List: Upload JSON file clicked', {});
+									}}
+								>
+									{' '}
+									{t('upload_json_file')}
+								</Button>
+							</Upload>
+							<a
+								href="https://github.com/SigNoz/dashboards"
+								target="_blank"
+								rel="noopener noreferrer"
+							>
+								<Button
+									type="default"
+									className="periscope-btn"
+									icon={<Github size={14} />}
+								>
+									{t('view_template')}&nbsp;
+									<ExternalLink size={14} />
+								</Button>
+							</a>
+						</Flex>
+
+						<Button
+							// disabled={editorValue.length === 0}
+							onClick={onClickLoadJsonHandler}
+							loading={dashboardCreating}
+							className="periscope-btn primary"
+							type="primary"
+						>
+							{t('import_and_next')} &nbsp; <MoveRight size={14} />
+						</Button>
+
+						{isFeatureAlert && (
+							<Typography.Text type="danger">
+								{MESSAGE.CREATE_DASHBOARD}
+							</Typography.Text>
+						)}
+					</div>
+				</div>
 			}
 		>
-			<div>
-				<Space direction="horizontal">
-					<Upload
-						accept=".json"
-						showUploadList={false}
-						multiple={false}
-						onChange={onChangeHandler}
-						beforeUpload={(): boolean => false}
-						action="none"
-						data={jsonData}
-					>
-						<Button type="primary">{t('upload_json_file')}</Button>
-					</Upload>
-					{isUploadJSONError && <>{getErrorNode(t('error_upload_json'))}</>}
-				</Space>
+			<div className="import-json-content-container">
+				<div className="import-json-content-header">
+					<Typography.Text>{t('import_json')}</Typography.Text>
 
-				<EditorContainer>
-					<Typography.Paragraph>{t('paste_json_below')}</Typography.Paragraph>
-					<Editor
-						onChange={(newValue): void => setEditorValue(newValue)}
-						value={editorValue}
-						language="json"
-					/>
-				</EditorContainer>
+					<X size={14} className="periscope-btn ghost" onClick={onCancelHandler} />
+				</div>
+
+				<MEditor
+					language="json"
+					height="40vh"
+					onChange={(newValue): void => setEditorValue(newValue || '')}
+					value={editorValue}
+					options={{
+						scrollbar: {
+							alwaysConsumeMouseWheel: false,
+						},
+						minimap: {
+							enabled: false,
+						},
+						fontSize: 14,
+						fontFamily: 'Space Mono',
+					}}
+					theme={isDarkMode ? 'my-theme' : 'light'}
+					onMount={(_, monaco): void => {
+						document.fonts.ready.then(() => {
+							monaco.editor.remeasureFonts();
+						});
+					}}
+					// eslint-disable-next-line react/jsx-no-bind
+					beforeMount={setEditorTheme}
+				/>
 			</div>
 		</Modal>
 	);

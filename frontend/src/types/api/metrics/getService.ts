@@ -1,3 +1,4 @@
+import { AxiosError } from 'axios';
 import { Tags } from 'types/reducer/trace';
 
 export interface Props {
@@ -14,6 +15,15 @@ export interface ServicesList {
 	callRate: number;
 	numErrors: number;
 	errorRate: number;
+	dataWarning?: {
+		topLevelOps?: string[];
+	};
 }
 
 export type PayloadProps = ServicesList[];
+
+export interface QueryServiceProps {
+	data: PayloadProps | undefined;
+	error: AxiosError | null;
+	isLoading: boolean;
+}

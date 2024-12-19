@@ -8,7 +8,6 @@ import {
 } from '@ant-design/icons';
 import { Typography } from 'antd';
 import Slack from 'container/SideNav/Slack';
-import React from 'react';
 import store from 'store';
 
 import { TGetStartedContentSection } from './types';
@@ -154,7 +153,7 @@ export const GetStartedContent = (): TGetStartedContentSection[] => {
 						href="https://signoz-community.slack.com/archives/C01HWQ1R0BC"
 						target="_blank"
 					>
-						#general
+						#dummy_channel
 					</Typography.Link>
 				</>
 			),

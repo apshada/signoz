@@ -14,7 +14,7 @@ import set from 'api/browser/localstorage/set';
 import { DASHBOARD_TIME_IN_DURATION } from 'constants/app';
 import useUrlQuery from 'hooks/useUrlQuery';
 import _omit from 'lodash-es/omit';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 import { useInterval } from 'react-use';
@@ -26,19 +26,26 @@ import {
 	UPDATE_TIME_INTERVAL,
 } from 'types/actions/globalTime';
 import { GlobalReducer } from 'types/reducer/globalTime';
+import { popupContainer } from 'utils/selectPopupContainer';
 
 import { getMinMax, options } from './config';
 import { ButtonContainer, Container } from './styles';
 
-function AutoRefresh({ disabled = false }: AutoRefreshProps): JSX.Element {
+function AutoRefresh({
+	disabled = false,
+	showAutoRefreshBtnPrimary = true,
+}: AutoRefreshProps): JSX.Element {
 	const globalTime = useSelector<AppState, GlobalReducer>(
 		(state) => state.globalTime,
 	);
 	const { pathname } = useLocation();
 
 	const isDisabled = useMemo(
-		() => disabled || globalTime.isAutoRefreshDisabled,
-		[globalTime.isAutoRefreshDisabled, disabled],
+		() =>
+			disabled ||
+			globalTime.isAutoRefreshDisabled ||
+			globalTime.selectedTime === 'custom',
+		[globalTime.isAutoRefreshDisabled, disabled, globalTime.selectedTime],
 	);
 
 	const localStorageData = JSON.parse(get(DASHBOARD_TIME_IN_DURATION) || '{}');
@@ -132,8 +139,14 @@ function AutoRefresh({ disabled = false }: AutoRefreshProps): JSX.Element {
 		[localStorageData, pathname],
 	);
 
+	if (globalTime.selectedTime === 'custom') {
+		// eslint-disable-next-line react/jsx-no-useless-fragment
+		return <></>;
+	}
+
 	return (
 		<Popover
+			getPopupContainer={popupContainer}
 			placement="bottomLeft"
 			trigger={['click']}
 			content={
@@ -166,7 +179,10 @@ function AutoRefresh({ disabled = false }: AutoRefreshProps): JSX.Element {
 				</Container>
 			}
 		>
-			<ButtonContainer title="Set auto refresh" type="primary">
+			<ButtonContainer
+				title="Set auto refresh"
+				type={showAutoRefreshBtnPrimary ? 'primary' : 'default'}
+			>
 				<CaretDownFilled />
 			</ButtonContainer>
 		</Popover>
@@ -175,10 +191,12 @@ function AutoRefresh({ disabled = false }: AutoRefreshProps): JSX.Element {
 
 interface AutoRefreshProps {
 	disabled?: boolean;
+	showAutoRefreshBtnPrimary?: boolean;
 }
 
 AutoRefresh.defaultProps = {
 	disabled: false,
+	showAutoRefreshBtnPrimary: true,
 };
 
 export default AutoRefresh;

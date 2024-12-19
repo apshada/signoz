@@ -19,6 +19,7 @@ type Queries interface {
 	GetUser(ctx context.Context, id string) (*model.UserPayload, *model.ApiError)
 	GetUserByEmail(ctx context.Context, email string) (*model.UserPayload, *model.ApiError)
 	GetUsers(ctx context.Context) ([]model.UserPayload, *model.ApiError)
+	GetUsersWithOpts(ctx context.Context, limit int) ([]model.UserPayload, *model.ApiError)
 
 	GetGroup(ctx context.Context, id string) (*model.Group, *model.ApiError)
 	GetGroupByName(ctx context.Context, name string) (*model.Group, *model.ApiError)
@@ -31,6 +32,12 @@ type Queries interface {
 	GetResetPasswordEntry(ctx context.Context, token string) (*model.ResetPasswordEntry, *model.ApiError)
 	GetUsersByOrg(ctx context.Context, orgId string) ([]model.UserPayload, *model.ApiError)
 	GetUsersByGroup(ctx context.Context, groupId string) ([]model.UserPayload, *model.ApiError)
+
+	GetApdexSettings(ctx context.Context, services []string) ([]model.ApdexSettings, *model.ApiError)
+
+	GetIngestionKeys(ctx context.Context) ([]model.IngestionKey, *model.ApiError)
+
+	PrecheckLogin(ctx context.Context, email, sourceUrl string) (*model.PrecheckResponse, model.BaseApiError)
 }
 
 type Mutations interface {
@@ -55,4 +62,8 @@ type Mutations interface {
 
 	UpdateUserPassword(ctx context.Context, hash, userId string) *model.ApiError
 	UpdateUserGroup(ctx context.Context, userId, groupId string) *model.ApiError
+
+	SetApdexSettings(ctx context.Context, set *model.ApdexSettings) *model.ApiError
+
+	InsertIngestionKey(ctx context.Context, ingestionKey *model.IngestionKey) *model.ApiError
 }

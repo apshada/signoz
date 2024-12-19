@@ -1,9 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable no-bitwise */
-/* eslint-disable sonarjs/no-identical-functions */
-/* eslint-disable no-param-reassign */
-/* eslint-disable react/no-array-index-key */
-/* eslint-disable react-hooks/exhaustive-deps */
 import { CloseOutlined, CloseSquareOutlined } from '@ant-design/icons';
 import { Button, Input, Select } from 'antd';
 import CategoryHeading from 'components/Logs/CategoryHeading';
@@ -12,7 +6,7 @@ import {
 	QueryOperatorsMultiVal,
 	QueryOperatorsSingleVal,
 } from 'lib/logql/tokens';
-import React, { useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { AppState } from 'store/reducers';
 import { ILogsReducer } from 'types/reducer/logs';
@@ -33,8 +27,9 @@ function QueryConditionField({
 	return (
 		<Select
 			defaultValue={
-				(query as any).value &&
-				(((query as any)?.value as any) as string).toUpperCase()
+				(query as QueryFields).value &&
+				(((((query as QueryFields)
+					?.value as unknown) as QueryFields) as unknown) as string).toUpperCase()
 			}
 			onChange={(e): void => {
 				onUpdate({ ...query, value: e }, queryIndex);
@@ -52,7 +47,7 @@ function QueryConditionField({
 interface QueryFieldProps {
 	query: Query;
 	queryIndex: number;
-	onUpdate: (query: unknown, queryIndex: number) => void;
+	onUpdate: (query: Query, queryIndex: number) => void;
 	onDelete: (queryIndex: number) => void;
 }
 function QueryField({
@@ -61,37 +56,44 @@ function QueryField({
 	onUpdate,
 	onDelete,
 }: QueryFieldProps): JSX.Element | null {
+	const [isDropDownOpen, setIsDropDownOpen] = useState(false);
+
 	const {
 		fields: { selected },
 	} = useSelector<AppState, ILogsReducer>((store) => store.logs);
-	const getFieldType = (inputKey: string): string => {
-		// eslint-disable-next-line no-restricted-syntax
-		for (const selectedField of selected) {
-			if (inputKey === selectedField.name) {
+	const getFieldType = useCallback(
+		(inputKey: string): string => {
+			const selectedField = selected.find((field) => inputKey === field.name);
+			if (selectedField) {
 				return selectedField.type;
 			}
-		}
-		return '';
-	};
+			return '';
+		},
+		[selected],
+	);
 
 	const fieldType = useMemo(() => getFieldType(query[0].value as string), [
+		getFieldType,
 		query,
 	]);
+
 	const handleChange = (qIdx: number, value: string): void => {
-		query[qIdx].value = value || '';
+		const updatedQuery = [...query];
+		updatedQuery[qIdx].value = value || '';
+
 		if (qIdx === 1) {
 			if (Object.values(QueryOperatorsMultiVal).includes(value)) {
-				if (!Array.isArray(query[2].value)) {
-					query[2].value = [];
+				if (!Array.isArray(updatedQuery[2].value)) {
+					updatedQuery[2].value = [];
 				}
 			} else if (
 				Object.values(QueryOperatorsSingleVal).includes(value) &&
-				Array.isArray(query[2].value)
+				Array.isArray(updatedQuery[2].value)
 			) {
-				query[2].value = '';
+				updatedQuery[2].value = '';
 			}
 		}
-		onUpdate(query, queryIndex);
+		onUpdate(updatedQuery, queryIndex);
 	};
 
 	const handleClear = (): void => {
@@ -136,9 +138,12 @@ function QueryField({
 					<Select
 						mode="tags"
 						style={{ width: '100%' }}
+						open={isDropDownOpen}
 						onChange={(e): void => handleChange(2, e as never)}
 						defaultValue={(query[2] && query[2].value) || []}
 						notFoundContent={null}
+						onInputKeyDown={(): void => setIsDropDownOpen(true)}
+						onSelect={(): void => setIsDropDownOpen(false)}
 					/>
 				) : (
 					<Input
@@ -175,6 +180,7 @@ export interface QueryBuilderProps {
 	onDropDownToggleHandler: (value: boolean) => VoidFunction;
 	fieldsQuery: QueryFields[][];
 	setFieldsQuery: (q: QueryFields[][]) => void;
+	syncKeyPrefix: () => void;
 }
 
 function QueryBuilder({
@@ -182,6 +188,7 @@ function QueryBuilder({
 	fieldsQuery,
 	setFieldsQuery,
 	onDropDownToggleHandler,
+	syncKeyPrefix,
 }: QueryBuilderProps): JSX.Element {
 	const handleUpdate = (query: Query, queryIndex: number): void => {
 		const updated = [...fieldsQuery];
@@ -195,6 +202,9 @@ function QueryBuilder({
 		else updated.splice(queryIndex, 2);
 
 		setFieldsQuery(updated);
+
+		// initiate re-render query panel
+		syncKeyPrefix();
 	};
 
 	const QueryUI = (
@@ -205,16 +215,16 @@ function QueryBuilder({
 			if (Array.isArray(query) && query.length > 1) {
 				result.push(
 					<QueryField
-						key={keyPrefix + idx}
-						query={query as never}
+						key={keyPrefix}
+						query={query}
 						queryIndex={idx}
-						onUpdate={handleUpdate as never}
+						onUpdate={handleUpdate}
 						onDelete={handleDelete}
 					/>,
 				);
 			} else {
 				result.push(
-					<div key={keyPrefix + idx}>
+					<div key={keyPrefix}>
 						<QueryConditionField
 							query={Array.isArray(query) ? query[0] : query}
 							queryIndex={idx}

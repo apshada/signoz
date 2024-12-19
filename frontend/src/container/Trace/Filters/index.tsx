@@ -1,4 +1,3 @@
-import React from 'react';
 import { TraceFilterEnum } from 'types/reducer/trace';
 
 import Panel from './Panel';
@@ -8,10 +7,8 @@ export const AllTraceFilterEnum: TraceFilterEnum[] = [
 	'status',
 	'serviceName',
 	'operation',
-	'component',
 	'rpcMethod',
 	'responseStatusCode',
-	// 'httpCode',
 	'httpHost',
 	'httpMethod',
 	'httpRoute',

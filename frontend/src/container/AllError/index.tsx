@@ -3,24 +3,30 @@ import {
 	Button,
 	Card,
 	Input,
-	notification,
 	Space,
-	Table,
 	TableProps,
 	Tooltip,
 	Typography,
 } from 'antd';
-import { ColumnType } from 'antd/es/table';
+import { ColumnType, TablePaginationConfig } from 'antd/es/table';
+import { FilterValue, SorterResult } from 'antd/es/table/interface';
 import { ColumnsType } from 'antd/lib/table';
 import { FilterConfirmProps } from 'antd/lib/table/interface';
+import logEvent from 'api/common/logEvent';
 import getAll from 'api/errors/getAll';
 import getErrorCounts from 'api/errors/getErrorCounts';
+import { ResizeTable } from 'components/ResizeTable';
 import ROUTES from 'constants/routes';
-import dayjs from 'dayjs';
+import { useNotifications } from 'hooks/useNotifications';
+import useResourceAttribute from 'hooks/useResourceAttribute';
+import { convertRawQueriesToTraceSelectedTags } from 'hooks/useResourceAttribute/utils';
+import { TimestampInput } from 'hooks/useTimezoneFormatter/useTimezoneFormatter';
 import useUrlQuery from 'hooks/useUrlQuery';
 import createQueryParams from 'lib/createQueryParams';
 import history from 'lib/history';
-import React, { useCallback, useEffect, useMemo } from 'react';
+import { isUndefined } from 'lodash-es';
+import { useTimezone } from 'providers/Timezone';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueries } from 'react-query';
 import { useSelector } from 'react-redux';
@@ -30,6 +36,7 @@ import { ErrorResponse, SuccessResponse } from 'types/api';
 import { Exception, PayloadProps } from 'types/api/errors/getAll';
 import { GlobalReducer } from 'types/reducer/globalTime';
 
+import { FilterDropdownExtendsProps } from './types';
 import {
 	extractFilterValues,
 	getDefaultFilterValue,
@@ -43,6 +50,15 @@ import {
 	getUpdatePageSize,
 	urlKey,
 } from './utils';
+
+type QueryParams = {
+	order: string;
+	offset: number;
+	orderParam: string;
+	pageSize: number;
+	exceptionType?: string;
+	serviceName?: string;
+};
 
 function AllErrors(): JSX.Element {
 	const { maxTime, minTime, loading } = useSelector<AppState, GlobalReducer>(
@@ -91,9 +107,11 @@ function AllErrors(): JSX.Element {
 		],
 	);
 
+	const { queries } = useResourceAttribute();
+
 	const [{ isLoading, data }, errorCountResponse] = useQueries([
 		{
-			queryKey: ['getAllErrors', updatedPath, maxTime, minTime],
+			queryKey: ['getAllErrors', updatedPath, maxTime, minTime, queries],
 			queryFn: (): Promise<SuccessResponse<PayloadProps> | ErrorResponse> =>
 				getAll({
 					end: maxTime,
@@ -104,6 +122,7 @@ function AllErrors(): JSX.Element {
 					orderParam: getUpdatedParams,
 					exceptionType: getUpdatedExceptionType,
 					serviceName: getUpdatedServiceName,
+					tags: convertRawQueriesToTraceSelectedTags(queries),
 				}),
 			enabled: !loading,
 		},
@@ -114,6 +133,7 @@ function AllErrors(): JSX.Element {
 				minTime,
 				getUpdatedExceptionType,
 				getUpdatedServiceName,
+				queries,
 			],
 			queryFn: (): Promise<ErrorResponse | SuccessResponse<number>> =>
 				getErrorCounts({
@@ -121,21 +141,31 @@ function AllErrors(): JSX.Element {
 					start: minTime,
 					exceptionType: getUpdatedExceptionType,
 					serviceName: getUpdatedServiceName,
+					tags: convertRawQueriesToTraceSelectedTags(queries),
 				}),
 			enabled: !loading,
 		},
 	]);
+	const { notifications } = useNotifications();
 
 	useEffect(() => {
 		if (data?.error) {
-			notification.error({
+			notifications.error({
 				message: data.error || t('something_went_wrong'),
 			});
 		}
-	}, [data?.error, data?.payload, t]);
+	}, [data?.error, data?.payload, t, notifications]);
 
-	const getDateValue = (value: string): JSX.Element => (
-		<Typography>{dayjs(value).format('DD/MM/YYYY HH:mm:ss A')}</Typography>
+	const getDateValue = (
+		value: string,
+		formatTimezoneAdjustedTimestamp: (
+			input: TimestampInput,
+			format?: string,
+		) => string,
+	): JSX.Element => (
+		<Typography>
+			{formatTimezoneAdjustedTimestamp(value, 'DD/MM/YYYY hh:mm:ss A')}
+		</Typography>
 	);
 
 	const filterIcon = useCallback(() => <SearchOutlined />, []);
@@ -152,16 +182,23 @@ function AllErrors(): JSX.Element {
 				filterKey,
 				filterValue || '',
 			);
-			history.replace(
-				`${pathname}?${createQueryParams({
-					order: updatedOrder,
-					offset: getUpdatedOffset,
-					orderParam: getUpdatedParams,
-					pageSize: getUpdatedPageSize,
-					exceptionType: exceptionFilterValue,
-					serviceName: serviceFilterValue,
-				})}`,
-			);
+
+			const queryParams: QueryParams = {
+				order: updatedOrder,
+				offset: getUpdatedOffset,
+				orderParam: getUpdatedParams,
+				pageSize: getUpdatedPageSize,
+			};
+
+			if (exceptionFilterValue && exceptionFilterValue !== 'undefined') {
+				queryParams.exceptionType = exceptionFilterValue;
+			}
+
+			if (serviceFilterValue && serviceFilterValue !== 'undefined') {
+				queryParams.serviceName = serviceFilterValue;
+			}
+
+			history.replace(`${pathname}?${createQueryParams(queryParams)}`);
 			confirm();
 		},
 		[
@@ -176,41 +213,47 @@ function AllErrors(): JSX.Element {
 	);
 
 	const filterDropdownWrapper = useCallback(
-		({ setSelectedKeys, selectedKeys, confirm, placeholder, filterKey }) => {
-			return (
-				<Card size="small">
-					<Space align="start" direction="vertical">
-						<Input
-							placeholder={placeholder}
-							value={selectedKeys[0]}
-							onChange={(e): void =>
-								setSelectedKeys(e.target.value ? [e.target.value] : [])
-							}
-							allowClear
-							defaultValue={getDefaultFilterValue(
-								filterKey,
-								getUpdatedServiceName,
-								getUpdatedExceptionType,
-							)}
-							onPressEnter={handleSearch(confirm, selectedKeys[0], filterKey)}
-						/>
-						<Button
-							type="primary"
-							onClick={handleSearch(confirm, selectedKeys[0], filterKey)}
-							icon={<SearchOutlined />}
-							size="small"
-						>
-							Search
-						</Button>
-					</Space>
-				</Card>
-			);
-		},
+		({
+			setSelectedKeys,
+			selectedKeys,
+			confirm,
+			placeholder,
+			filterKey,
+		}: FilterDropdownExtendsProps) => (
+			<Card size="small">
+				<Space align="start" direction="vertical">
+					<Input
+						placeholder={placeholder}
+						value={selectedKeys[0]}
+						onChange={
+							(e): void => setSelectedKeys(e.target.value ? [e.target.value] : [])
+
+							// Need to fix this logic, when the value in empty, it's setting undefined string as value
+						}
+						allowClear
+						defaultValue={getDefaultFilterValue(
+							filterKey,
+							getUpdatedServiceName,
+							getUpdatedExceptionType,
+						)}
+						onPressEnter={handleSearch(confirm, String(selectedKeys[0]), filterKey)}
+					/>
+					<Button
+						type="primary"
+						onClick={handleSearch(confirm, String(selectedKeys[0]), filterKey)}
+						icon={<SearchOutlined />}
+						size="small"
+					>
+						Search
+					</Button>
+				</Space>
+			</Card>
+		),
 		[getUpdatedExceptionType, getUpdatedServiceName, handleSearch],
 	);
 
-	const onExceptionTypeFilter = useCallback(
-		(value, record: Exception): boolean => {
+	const onExceptionTypeFilter: ColumnType<Exception>['onFilter'] = useCallback(
+		(value: unknown, record: Exception): boolean => {
 			if (record.exceptionType && typeof value === 'string') {
 				return record.exceptionType.toLowerCase().includes(value.toLowerCase());
 			}
@@ -220,7 +263,7 @@ function AllErrors(): JSX.Element {
 	);
 
 	const onApplicationTypeFilter = useCallback(
-		(value, record: Exception): boolean => {
+		(value: unknown, record: Exception): boolean => {
 			if (record.serviceName && typeof value === 'string') {
 				return record.serviceName.toLowerCase().includes(value.toLowerCase());
 			}
@@ -249,9 +292,12 @@ function AllErrors(): JSX.Element {
 		[filterIcon, filterDropdownWrapper],
 	);
 
+	const { formatTimezoneAdjustedTimestamp } = useTimezone();
+
 	const columns: ColumnsType<Exception> = [
 		{
 			title: 'Exception Type',
+			width: 100,
 			dataIndex: 'exceptionType',
 			key: 'exceptionType',
 			...getFilter(onExceptionTypeFilter, 'Search By Exception', 'exceptionType'),
@@ -277,6 +323,7 @@ function AllErrors(): JSX.Element {
 			title: 'Error Message',
 			dataIndex: 'exceptionMessage',
 			key: 'exceptionMessage',
+			width: 100,
 			render: (value): JSX.Element => (
 				<Tooltip overlay={(): JSX.Element => value}>
 					<Typography.Paragraph
@@ -291,6 +338,7 @@ function AllErrors(): JSX.Element {
 		},
 		{
 			title: 'Count',
+			width: 50,
 			dataIndex: 'exceptionCount',
 			key: 'exceptionCount',
 			sorter: true,
@@ -303,8 +351,10 @@ function AllErrors(): JSX.Element {
 		{
 			title: 'Last Seen',
 			dataIndex: 'lastSeen',
+			width: 80,
 			key: 'lastSeen',
-			render: getDateValue,
+			render: (value): JSX.Element =>
+				getDateValue(value, formatTimezoneAdjustedTimestamp),
 			sorter: true,
 			defaultSortOrder: getDefaultOrder(
 				getUpdatedParams,
@@ -315,8 +365,10 @@ function AllErrors(): JSX.Element {
 		{
 			title: 'First Seen',
 			dataIndex: 'firstSeen',
+			width: 80,
 			key: 'firstSeen',
-			render: getDateValue,
+			render: (value): JSX.Element =>
+				getDateValue(value, formatTimezoneAdjustedTimestamp),
 			sorter: true,
 			defaultSortOrder: getDefaultOrder(
 				getUpdatedParams,
@@ -327,6 +379,7 @@ function AllErrors(): JSX.Element {
 		{
 			title: 'Application',
 			dataIndex: 'serviceName',
+			width: 100,
 			key: 'serviceName',
 			sorter: true,
 			defaultSortOrder: getDefaultOrder(
@@ -343,7 +396,11 @@ function AllErrors(): JSX.Element {
 	];
 
 	const onChangeHandler: TableProps<Exception>['onChange'] = useCallback(
-		(paginations, filters, sorter) => {
+		(
+			paginations: TablePaginationConfig,
+			filters: Record<string, FilterValue | null>,
+			sorter: SorterResult<Exception>[] | SorterResult<Exception>,
+		) => {
 			if (!Array.isArray(sorter)) {
 				const { pageSize = 0, current = 0 } = paginations;
 				const { columnKey = '', order } = sorter;
@@ -368,11 +425,31 @@ function AllErrors(): JSX.Element {
 		[pathname],
 	);
 
+	const logEventCalledRef = useRef(false);
+	useEffect(() => {
+		if (
+			!logEventCalledRef.current &&
+			!isUndefined(errorCountResponse.data?.payload)
+		) {
+			const selectedEnvironments = queries.find(
+				(val) => val.tagKey === 'resource_deployment_environment',
+			)?.tagValue;
+
+			logEvent('Exception: List page visited', {
+				numberOfExceptions: errorCountResponse?.data?.payload,
+				selectedEnvironments,
+				resourceAttributeUsed: !!queries?.length,
+			});
+			logEventCalledRef.current = true;
+		}
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [errorCountResponse.data?.payload]);
+
 	return (
-		<Table
+		<ResizeTable
+			columns={columns}
 			tableLayout="fixed"
 			dataSource={data?.payload as Exception[]}
-			columns={columns}
 			rowKey="firstSeen"
 			loading={isLoading || false || errorCountResponse.status === 'loading'}
 			pagination={{

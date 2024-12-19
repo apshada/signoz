@@ -1,8 +1,6 @@
-/* eslint-disable react/jsx-no-bind */
-import { Modal } from 'antd';
-import DatePicker from 'components/DatePicker';
+import { DatePicker, Modal } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
-import React, { useState } from 'react';
+import { Dispatch, SetStateAction, useState } from 'react';
 
 export type DateTimeRangeType = [Dayjs | null, Dayjs | null] | null;
 
@@ -12,34 +10,44 @@ function CustomDateTimeModal({
 	visible,
 	onCreate,
 	onCancel,
+	setCustomDTPickerVisible,
 }: CustomDateTimeModalProps): JSX.Element {
-	const [
-		customDateTimeRange,
-		setCustomDateTimeRange,
-	] = useState<DateTimeRangeType>();
+	const [selectedDate, setDateTime] = useState<DateTimeRangeType>();
 
-	function handleRangePickerOk(date_time: DateTimeRangeType): void {
-		setCustomDateTimeRange(date_time);
-	}
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	const onModalOkHandler = (date_time: any): void => {
+		setDateTime(date_time);
+	};
 
-	function disabledDate(current: Dayjs): boolean {
-		return current > dayjs();
-	}
+	// Using any type here because antd's DatePicker expects its own internal Dayjs type
+	// which conflicts with our project's Dayjs type that has additional plugins (tz, utc etc).
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/explicit-module-boundary-types
+	const disabledDate = (current: any): boolean => {
+		const currentDay = dayjs(current);
+		return currentDay.isAfter(dayjs());
+	};
+
+	const onOk = (): void => {
+		if (selectedDate) {
+			onCreate(selectedDate);
+			setCustomDTPickerVisible(false);
+		}
+	};
 
 	return (
 		<Modal
-			visible={visible}
+			open={visible}
 			title="Chose date and time range"
 			okText="Apply"
 			cancelText="Cancel"
 			onCancel={onCancel}
-			style={{ position: 'absolute', top: 60, right: 40 }}
-			onOk={(): void => onCreate(customDateTimeRange || null)}
+			onOk={onOk}
 		>
 			<RangePicker
 				disabledDate={disabledDate}
-				onOk={handleRangePickerOk}
-				showTime
+				allowClear
+				onOk={onModalOkHandler}
+				onCalendarChange={onModalOkHandler}
 			/>
 		</Modal>
 	);
@@ -49,6 +57,7 @@ interface CustomDateTimeModalProps {
 	visible: boolean;
 	onCreate: (dateTimeRange: DateTimeRangeType) => void;
 	onCancel: () => void;
+	setCustomDTPickerVisible: Dispatch<SetStateAction<boolean>>;
 }
 
 export default CustomDateTimeModal;

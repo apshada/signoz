@@ -1,57 +1,43 @@
-import { Button, Popover } from 'antd';
-import { generateFilterQuery } from 'lib/logs/generateFilterQuery';
-import React, { memo, useCallback, useMemo } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
-import { AppState } from 'store/reducers';
-import { SET_SEARCH_QUERY_STRING } from 'types/actions/logs';
-import { ILogsReducer } from 'types/reducer/logs';
+import './AddToQueryHOC.styles.scss';
+
+import { Popover } from 'antd';
+import cx from 'classnames';
+import { OPERATORS } from 'constants/queryBuilder';
+import { FontSize } from 'container/OptionsMenu/types';
+import { memo, MouseEvent, ReactNode, useMemo } from 'react';
 
 function AddToQueryHOC({
 	fieldKey,
 	fieldValue,
+	onAddToQuery,
+	fontSize,
 	children,
 }: AddToQueryHOCProps): JSX.Element {
-	const {
-		searchFilter: { queryString },
-	} = useSelector<AppState, ILogsReducer>((store) => store.logs);
-	const dispatch = useDispatch();
-
-	const generatedQuery = useMemo(
-		() => generateFilterQuery({ fieldKey, fieldValue, type: 'IN' }),
-		[fieldKey, fieldValue],
-	);
-
-	const handleQueryAdd = useCallback(() => {
-		let updatedQueryString = queryString || '';
-
-		if (updatedQueryString.length === 0) {
-			updatedQueryString += `${generatedQuery}`;
-		} else {
-			updatedQueryString += ` AND ${generatedQuery}`;
-		}
-		dispatch({
-			type: SET_SEARCH_QUERY_STRING,
-			payload: updatedQueryString,
-		});
-	}, [dispatch, generatedQuery, queryString]);
+	const handleQueryAdd = (event: MouseEvent<HTMLDivElement>): void => {
+		event.stopPropagation();
+		onAddToQuery(fieldKey, fieldValue, OPERATORS['=']);
+	};
 
 	const popOverContent = useMemo(() => <span>Add to query: {fieldKey}</span>, [
 		fieldKey,
 	]);
 
 	return (
-		<Button size="small" type="text" onClick={handleQueryAdd}>
+		// eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
+		<div className={cx('addToQueryContainer', fontSize)} onClick={handleQueryAdd}>
 			<Popover placement="top" content={popOverContent}>
 				{children}
 			</Popover>
-		</Button>
+		</div>
 	);
 }
 
-interface AddToQueryHOCProps {
+export interface AddToQueryHOCProps {
 	fieldKey: string;
 	fieldValue: string;
-	children: React.ReactNode;
+	onAddToQuery: (fieldKey: string, fieldValue: string, operator: string) => void;
+	fontSize: FontSize;
+	children: ReactNode;
 }
 
 export default memo(AddToQueryHOC);

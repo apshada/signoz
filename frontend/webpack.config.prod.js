@@ -4,7 +4,9 @@
 const { resolve } = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const CopyPlugin = require('copy-webpack-plugin');
+const { sentryWebpackPlugin } = require('@sentry/webpack-plugin');
 const CompressionPlugin = require('compression-webpack-plugin');
+const dotenv = require('dotenv');
 const webpack = require('webpack');
 const TsconfigPathsPlugin = require('tsconfig-paths-webpack-plugin');
 const TerserPlugin = require('terser-webpack-plugin');
@@ -12,9 +14,27 @@ const CssMinimizerPlugin = require('css-minimizer-webpack-plugin');
 const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer');
 const Critters = require('critters-webpack-plugin');
+const { RetryChunkLoadPlugin } = require('webpack-retry-chunk-load-plugin');
+
+dotenv.config();
+
+const cssLoader = 'css-loader';
+const sassLoader = 'sass-loader';
+const styleLoader = 'style-loader';
 
 const plugins = [
-	new HtmlWebpackPlugin({ template: 'src/index.html.ejs' }),
+	new HtmlWebpackPlugin({
+		template: 'src/index.html.ejs',
+		INTERCOM_APP_ID: process.env.INTERCOM_APP_ID,
+		SEGMENT_ID: process.env.SEGMENT_ID,
+		POSTHOG_KEY: process.env.POSTHOG_KEY,
+		SENTRY_AUTH_TOKEN: process.env.SENTRY_AUTH_TOKEN,
+		SENTRY_ORG: process.env.SENTRY_ORG,
+		SENTRY_PROJECT_ID: process.env.SENTRY_PROJECT_ID,
+		SENTRY_DSN: process.env.SENTRY_DSN,
+		TUNNEL_URL: process.env.TUNNEL_URL,
+		TUNNEL_DOMAIN: process.env.TUNNEL_DOMAIN,
+	}),
 	new CompressionPlugin({
 		exclude: /.map$/,
 	}),
@@ -25,7 +45,19 @@ const plugins = [
 		process: 'process/browser',
 	}),
 	new webpack.DefinePlugin({
-		'process.env': JSON.stringify(process.env),
+		'process.env': JSON.stringify({
+			FRONTEND_API_ENDPOINT: process.env.FRONTEND_API_ENDPOINT,
+			WEBSOCKET_API_ENDPOINT: process.env.WEBSOCKET_API_ENDPOINT,
+			INTERCOM_APP_ID: process.env.INTERCOM_APP_ID,
+			SEGMENT_ID: process.env.SEGMENT_ID,
+			POSTHOG_KEY: process.env.POSTHOG_KEY,
+			SENTRY_AUTH_TOKEN: process.env.SENTRY_AUTH_TOKEN,
+			SENTRY_ORG: process.env.SENTRY_ORG,
+			SENTRY_PROJECT_ID: process.env.SENTRY_PROJECT_ID,
+			SENTRY_DSN: process.env.SENTRY_DSN,
+			TUNNEL_URL: process.env.TUNNEL_URL,
+			TUNNEL_DOMAIN: process.env.TUNNEL_DOMAIN,
+		}),
 	}),
 	new MiniCssExtractPlugin(),
 	new Critters({
@@ -36,6 +68,14 @@ const plugins = [
 		publicPath: resolve(__dirname, './public/css'),
 		fonts: true,
 	}),
+	sentryWebpackPlugin({
+		authToken: process.env.SENTRY_AUTH_TOKEN,
+		org: process.env.SENTRY_ORG,
+		project: process.env.SENTRY_PROJECT_ID,
+	}),
+	new RetryChunkLoadPlugin({
+		maxRetries: 2,
+	}),
 ];
 
 if (process.env.BUNDLE_ANALYSER === 'true') {
@@ -44,6 +84,7 @@ if (process.env.BUNDLE_ANALYSER === 'true') {
 
 const config = {
 	mode: 'production',
+	devtool: 'source-map',
 	entry: resolve(__dirname, './src/index.tsx'),
 	output: {
 		path: resolve(__dirname, './build'),
@@ -53,6 +94,7 @@ const config = {
 	resolve: {
 		extensions: ['.ts', '.tsx', '.js', '.jsx'],
 		plugins: [new TsconfigPathsPlugin({})],
+		fallback: { 'process/browser': require.resolve('process/browser') },
 	},
 	cache: {
 		type: 'filesystem',
@@ -73,15 +115,30 @@ const config = {
 				exclude: /node_modules/,
 			},
 			{
+				test: /\.md$/,
+				use: 'raw-loader',
+			},
+			{
 				test: /\.css$/,
 				use: [
 					MiniCssExtractPlugin.loader,
 					{
-						loader: 'css-loader',
+						loader: cssLoader,
 						options: {
 							modules: true,
 						},
 					},
+				],
+			},
+			{
+				test: /\.s[ac]ss$/i,
+				use: [
+					// Creates `style` nodes from JS strings
+					styleLoader,
+					// Translates CSS into CommonJS
+					cssLoader,
+					// Compiles Sass to CSS
+					sassLoader,
 				],
 			},
 			{
@@ -99,10 +156,10 @@ const config = {
 				test: /\.less$/i,
 				use: [
 					{
-						loader: 'style-loader',
+						loader: styleLoader,
 					},
 					{
-						loader: 'css-loader',
+						loader: cssLoader,
 						options: {
 							modules: true,
 						},

@@ -185,7 +185,7 @@ func (mds *ModelDaoSqlite) CreateUser(ctx context.Context,
 		`INSERT INTO users (id, name, email, password, created_at, profile_picture_url, group_id, org_id)
 		 VALUES (?, ?, ?, ?, ?, ?, ?,?);`,
 		user.Id, user.Name, user.Email, user.Password, user.CreatedAt,
-		user.ProfilePirctureURL, user.GroupId, user.OrgId,
+		user.ProfilePictureURL, user.GroupId, user.OrgId,
 	)
 
 	if err != nil {
@@ -203,7 +203,7 @@ func (mds *ModelDaoSqlite) CreateUser(ctx context.Context,
 	}
 
 	telemetry.GetInstance().IdentifyUser(user)
-	telemetry.GetInstance().SendEvent(telemetry.TELEMETRY_EVENT_USER, data)
+	telemetry.GetInstance().SendEvent(telemetry.TELEMETRY_EVENT_USER, data, user.Email, true, false)
 
 	return user, nil
 }
@@ -275,13 +275,13 @@ func (mds *ModelDaoSqlite) GetUser(ctx context.Context,
 				u.group_id,
 				g.name as role,
 				o.name as organization,
-				COALESCE((select uf.flags 
-					from user_flags uf 
+				COALESCE((select uf.flags
+					from user_flags uf
 					where u.id = uf.user_id), '') as flags
 			from users u, groups g, organizations o
 			where
 				g.id=u.group_id and
-				o.id = u.org_id and 
+				o.id = u.org_id and
 				u.id=?;`
 
 	if err := mds.db.Select(&users, query, id); err != nil {
@@ -345,7 +345,13 @@ func (mds *ModelDaoSqlite) GetUserByEmail(ctx context.Context,
 	return &users[0], nil
 }
 
+// GetUsers fetches total user count
 func (mds *ModelDaoSqlite) GetUsers(ctx context.Context) ([]model.UserPayload, *model.ApiError) {
+	return mds.GetUsersWithOpts(ctx, 0)
+}
+
+// GetUsersWithOpts fetches users and supports additional search options
+func (mds *ModelDaoSqlite) GetUsersWithOpts(ctx context.Context, limit int) ([]model.UserPayload, *model.ApiError) {
 	users := []model.UserPayload{}
 
 	query := `select
@@ -364,6 +370,9 @@ func (mds *ModelDaoSqlite) GetUsers(ctx context.Context) ([]model.UserPayload, *
 				g.id = u.group_id and
 				o.id = u.org_id`
 
+	if limit > 0 {
+		query = fmt.Sprintf("%s LIMIT %d", query, limit)
+	}
 	err := mds.db.Select(&users, query)
 
 	if err != nil {
@@ -554,13 +563,11 @@ func (mds *ModelDaoSqlite) UpdateUserFlags(ctx context.Context, userId string, f
 		return nil, apiError
 	}
 
-	if userPayload.Flags != nil {
-		for k, v := range userPayload.Flags {
-			if _, ok := flags[k]; !ok {
-				// insert only missing keys as we want to retain the
-				// flags in the db that are not part of this request
-				flags[k] = v
-			}
+	for k, v := range userPayload.Flags {
+		if _, ok := flags[k]; !ok {
+			// insert only missing keys as we want to retain the
+			// flags in the db that are not part of this request
+			flags[k] = v
 		}
 	}
 
@@ -587,4 +594,37 @@ func (mds *ModelDaoSqlite) UpdateUserFlags(ctx context.Context, userId string, f
 	}
 
 	return flags, nil
+}
+
+func (mds *ModelDaoSqlite) PrecheckLogin(ctx context.Context, email, sourceUrl string) (*model.PrecheckResponse, model.BaseApiError) {
+	// assume user is valid unless proven otherwise and assign default values for rest of the fields
+	resp := &model.PrecheckResponse{IsUser: true, CanSelfRegister: false, SSO: false, SsoUrl: "", SsoError: ""}
+
+	// check if email is a valid user
+	userPayload, baseApiErr := mds.GetUserByEmail(ctx, email)
+	if baseApiErr != nil {
+		return resp, baseApiErr
+	}
+
+	if userPayload == nil {
+		resp.IsUser = false
+	}
+
+	return resp, nil
+}
+
+func (mds *ModelDaoSqlite) GetUserRole(ctx context.Context, groupId string) (string, error) {
+	role, err := mds.GetGroup(ctx, groupId)
+	if err != nil || role == nil {
+		return "", err
+	}
+	return role.Name, nil
+}
+
+func (mds *ModelDaoSqlite) GetUserCount(ctx context.Context) (int, error) {
+	users, err := mds.GetUsers(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return len(users), nil
 }

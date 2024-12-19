@@ -1,6 +1,7 @@
-import { notification } from 'antd';
+import { useNotifications } from 'hooks/useNotifications';
+import { reverseParser } from 'lib/logql';
 import { flatten } from 'lodash-es';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { AppState } from 'store/reducers';
 import { ILogsReducer } from 'types/reducer/logs';
@@ -18,13 +19,13 @@ import {
 } from './utils';
 
 export interface SearchFieldsProps {
-	updateParsedQuery: (query: QueryFields[]) => void;
 	onDropDownToggleHandler: (value: boolean) => VoidFunction;
+	updateQueryString: (value: string) => void;
 }
 
 function SearchFields({
-	updateParsedQuery,
 	onDropDownToggleHandler,
+	updateQueryString,
 }: SearchFieldsProps): JSX.Element {
 	const {
 		searchFilter: { parsedQuery },
@@ -36,6 +37,8 @@ function SearchFields({
 
 	const keyPrefixRef = useRef(hashCode(JSON.stringify(fieldsQuery)));
 
+	const { notifications } = useNotifications();
+
 	useEffect(() => {
 		const updatedFieldsQuery = createParsedQueryStructure([
 			...parsedQuery,
@@ -46,6 +49,14 @@ function SearchFields({
 			keyPrefixRef.current = incomingHashCode;
 		}
 	}, [parsedQuery]);
+
+	// syncKeyPrefix initiates re-render. useful in situations like
+	// delete field (in search panel). this method allows condiitonally
+	// setting keyPrefix as doing it on every update of query initiates
+	// a re-render. this is a problem for text fields where input focus goes away.
+	const syncKeyPrefix = (): void => {
+		keyPrefixRef.current = hashCode(JSON.stringify(fieldsQuery));
+	};
 
 	const addSuggestedField = useCallback(
 		(name: string): void => {
@@ -73,22 +84,22 @@ function SearchFields({
 		const flatParsedQuery = flatten(fieldsQuery);
 
 		if (!fieldsQueryIsvalid(flatParsedQuery)) {
-			notification.error({
+			notifications.error({
 				message: 'Please enter a valid criteria for each of the selected fields',
 			});
 			return;
 		}
 
 		keyPrefixRef.current = hashCode(JSON.stringify(flatParsedQuery));
-		updateParsedQuery(flatParsedQuery);
+		updateQueryString(reverseParser(flatParsedQuery));
 		onDropDownToggleHandler(false)();
-	}, [onDropDownToggleHandler, fieldsQuery, updateParsedQuery]);
+	}, [fieldsQuery, notifications, onDropDownToggleHandler, updateQueryString]);
 
 	const clearFilters = useCallback((): void => {
 		keyPrefixRef.current = hashCode(JSON.stringify([]));
-		updateParsedQuery([]);
-		onDropDownToggleHandler(false)();
-	}, [onDropDownToggleHandler, updateParsedQuery]);
+		setFieldsQuery([]);
+		updateQueryString('');
+	}, [updateQueryString]);
 
 	return (
 		<>
@@ -98,11 +109,11 @@ function SearchFields({
 				onDropDownToggleHandler={onDropDownToggleHandler}
 				fieldsQuery={fieldsQuery}
 				setFieldsQuery={setFieldsQuery}
+				syncKeyPrefix={syncKeyPrefix}
 			/>
 			<SearchFieldsActionBar
 				applyUpdate={applyUpdate}
 				clearFilters={clearFilters}
-				fieldsQuery={fieldsQuery}
 			/>
 			<Suggestions applySuggestion={addSuggestedField} />
 		</>

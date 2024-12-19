@@ -1,24 +1,28 @@
-import {
-	FastBackwardOutlined,
-	LeftOutlined,
-	RightOutlined,
-} from '@ant-design/icons';
-import { Button, Divider, Select } from 'antd';
-import React, { memo, useMemo } from 'react';
+import { FastBackwardOutlined } from '@ant-design/icons';
+import { Button, Divider } from 'antd';
+import Controls from 'container/Controls';
+import Download from 'container/Download/Download';
+import { getGlobalTime } from 'container/LogsSearchFilter/utils';
+import { getMinMax } from 'container/TopNav/AutoRefresh/config';
+import dayjs from 'dayjs';
+import { Pagination } from 'hooks/queryPagination';
+import { FlatLogData } from 'lib/logs/flatLogData';
+import { OrderPreferenceItems } from 'pages/Logs/config';
+import { memo, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { Dispatch } from 'redux';
 import { AppState } from 'store/reducers';
+import AppActions from 'types/actions';
 import {
 	GET_NEXT_LOG_LINES,
 	GET_PREVIOUS_LOG_LINES,
 	RESET_ID_START_AND_END,
 	SET_LOG_LINES_PER_PAGE,
 } from 'types/actions/logs';
+import { GlobalReducer } from 'types/reducer/globalTime';
 import { ILogsReducer } from 'types/reducer/logs';
 
-import { ITEMS_PER_PAGE_OPTIONS } from './config';
 import { Container } from './styles';
-
-const { Option } = Select;
 
 function LogControls(): JSX.Element | null {
 	const {
@@ -27,20 +31,41 @@ function LogControls(): JSX.Element | null {
 		isLoading: isLogsLoading,
 		isLoadingAggregate,
 		logs,
+		order,
 	} = useSelector<AppState, ILogsReducer>((state) => state.logs);
-	const dispatch = useDispatch();
+	const globalTime = useSelector<AppState, GlobalReducer>(
+		(state) => state.globalTime,
+	);
 
-	const handleLogLinesPerPageChange = (e: number): void => {
+	const dispatch = useDispatch<Dispatch<AppActions>>();
+
+	const handleLogLinesPerPageChange = (e: Pagination['limit']): void => {
 		dispatch({
 			type: SET_LOG_LINES_PER_PAGE,
-			payload: e,
+			payload: {
+				logsLinesPerPage: e,
+			},
 		});
 	};
 
 	const handleGoToLatest = (): void => {
-		dispatch({
-			type: RESET_ID_START_AND_END,
+		const { maxTime, minTime } = getMinMax(
+			globalTime.selectedTime,
+			globalTime.minTime,
+			globalTime.maxTime,
+		);
+
+		const updatedGlobalTime = getGlobalTime(globalTime.selectedTime, {
+			maxTime,
+			minTime,
 		});
+
+		if (updatedGlobalTime) {
+			dispatch({
+				type: RESET_ID_START_AND_END,
+				payload: updatedGlobalTime,
+			});
+		}
 	};
 
 	const handleNavigatePrevious = (): void => {
@@ -48,22 +73,30 @@ function LogControls(): JSX.Element | null {
 			type: GET_PREVIOUS_LOG_LINES,
 		});
 	};
+
 	const handleNavigateNext = (): void => {
 		dispatch({
 			type: GET_NEXT_LOG_LINES,
 		});
 	};
 
-	const isLoading = isLogsLoading || isLoadingAggregate;
-
-	const isNextAndPreviousDisabled = useMemo(
+	const flattenLogData = useMemo(
 		() =>
-			isLoading ||
-			logLinesPerPage === 0 ||
-			logs.length === 0 ||
-			logs.length < logLinesPerPage,
-		[isLoading, logLinesPerPage, logs.length],
+			logs.map((log) => {
+				const timestamp =
+					typeof log.timestamp === 'string'
+						? dayjs(log.timestamp).format('YYYY-MM-DD HH:mm:ss.SSS')
+						: dayjs(log.timestamp / 1e6).format('YYYY-MM-DD HH:mm:ss.SSS');
+
+				return FlatLogData({
+					...log,
+					timestamp,
+				});
+			}),
+		[logs],
 	);
+
+	const isLoading = isLogsLoading || isLoadingAggregate;
 
 	if (liveTail !== 'STOPPED') {
 		return null;
@@ -71,42 +104,25 @@ function LogControls(): JSX.Element | null {
 
 	return (
 		<Container>
+			<Download data={flattenLogData} isLoading={isLoading} fileName="log_data" />
 			<Button
 				loading={isLoading}
 				size="small"
 				type="link"
+				disabled={order === OrderPreferenceItems.ASC}
 				onClick={handleGoToLatest}
 			>
 				<FastBackwardOutlined /> Go to latest
 			</Button>
 			<Divider type="vertical" />
-			<Button
-				loading={isLoading}
-				size="small"
-				type="link"
-				disabled={isNextAndPreviousDisabled}
-				onClick={handleNavigatePrevious}
-			>
-				<LeftOutlined /> Previous
-			</Button>
-			<Button
-				loading={isLoading}
-				size="small"
-				type="link"
-				disabled={isNextAndPreviousDisabled}
-				onClick={handleNavigateNext}
-			>
-				Next <RightOutlined />
-			</Button>
-			<Select
-				loading={isLoading}
-				value={logLinesPerPage}
-				onChange={handleLogLinesPerPageChange}
-			>
-				{ITEMS_PER_PAGE_OPTIONS.map((count) => (
-					<Option key={count} value={count}>{`${count} / page`}</Option>
-				))}
-			</Select>
+			<Controls
+				isLoading={isLoading}
+				totalCount={logs.length}
+				countPerPage={logLinesPerPage}
+				handleNavigatePrevious={handleNavigatePrevious}
+				handleNavigateNext={handleNavigateNext}
+				handleCountItemsPerPageChange={handleLogLinesPerPageChange}
+			/>
 		</Container>
 	);
 }
